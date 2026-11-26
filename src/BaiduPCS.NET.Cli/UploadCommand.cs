@@ -17,9 +17,12 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
         [CommandOption("--retries <COUNT>")] public int Retries { get; init; } = 3;
         [CommandOption("--skip-rapid-check")] public bool SkipRapidCheck { get; init; }
         [CommandOption("--conflict <POLICY>")] public string? Conflict { get; init; }
+        [CommandOption("--as <NAME>")] public string? RemoteName { get; init; }
 
         public override ValidationResult Validate() => Paths.Length < 2
             ? ValidationResult.Error("Specify at least one local source, followed by the remote directory.")
+            : RemoteName is not null && (Paths.Length != 2 || RemoteName is "" or "." or ".." || RemoteName.Contains('/'))
+                ? ValidationResult.Error("--as requires one local file and a name within the remote directory.")
             : Parallel is < 1 || FileConcurrency is < 1 || Retries < 0
                 ? ValidationResult.Error("Concurrency must be positive and retries cannot be negative.") : ValidationResult.Success();
     }
@@ -39,7 +42,8 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
             };
             string checkpoints = Path.Combine(Store.DirectoryPath, "uploads");
             var failures = new ConcurrentQueue<string>();
-            UploadItem[] files = EnumerateFiles(settings.Paths[..^1], remote, profile.Settings.CheckUploadNames, failures, cancellationToken);
+            UploadItem[] files = EnumerateFiles(settings.Paths[..^1], remote, settings.RemoteName,
+                profile.Settings.CheckUploadNames, failures, cancellationToken);
             if (files.Length == 0)
             {
                 foreach (string failure in failures)
@@ -91,7 +95,8 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
         }
     }
 
-    private static UploadItem[] EnumerateFiles(string[] paths, string destination, bool checkNames, ConcurrentQueue<string> failures,
+    private static UploadItem[] EnumerateFiles(string[] paths, string destination, string? remoteName, bool checkNames,
+        ConcurrentQueue<string> failures,
         CancellationToken token)
     {
         var items = new Dictionary<string, UploadItem>(StringComparer.Ordinal);
@@ -101,7 +106,9 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
         {
             string fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
             FileSystemInfo entry = Directory.Exists(fullPath) ? new DirectoryInfo(fullPath) : new FileInfo(fullPath);
-            Visit(entry, RemotePath.Resolve(destination, entry.Name));
+            if (remoteName is not null && entry is DirectoryInfo)
+                throw new ArgumentException("--as requires a local file.");
+            Visit(entry, RemotePath.Resolve(destination, remoteName ?? entry.Name));
         }
 
         return [.. items.Values];
@@ -109,7 +116,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
         void Visit(FileSystemInfo entry, string target)
         {
             token.ThrowIfCancellationRequested();
-            if (checkNames && entry.Name.IndexOfAny(['<', '>', '|', ':', '"', '*', '?', ',', '\\']) >= 0)
+            if (checkNames && RemotePath.Name(target).IndexOfAny(['<', '>', '|', ':', '"', '*', '?', '\\']) >= 0)
             {
                 failures.Enqueue($"Invalid upload file name: {entry.FullName}");
                 return;

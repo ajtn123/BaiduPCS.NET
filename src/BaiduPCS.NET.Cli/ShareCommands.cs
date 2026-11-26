@@ -77,6 +77,7 @@ internal sealed class ImportShareCommand : RemoteCommand<ImportShareCommand.Sett
         [CommandArgument(0, "<link>")] public string Link { get; init; } = "";
         [CommandOption("--code <CODE>")] public string? Code { get; init; }
         [CommandOption("--file-id <ID>")] public long[] FileIds { get; init; } = [];
+        [CommandOption("--destination <PATH>")] public string Destination { get; init; } = ".";
         [CommandOption("--collect")] public bool Collect { get; init; }
         [CommandOption("--download")] public bool Download { get; init; }
     }
@@ -86,8 +87,11 @@ internal sealed class ImportShareCommand : RemoteCommand<ImportShareCommand.Sett
         var (account, client) = await OpenAsync(settings, cancellationToken);
         IReadOnlyList<string> saved;
         using (client)
-            saved = await client.ImportShareAsync(settings.Link, settings.Code, account.WorkingDirectory, settings.FileIds,
+        {
+            string destination = await client.MatchOneAsync(account.WorkingDirectory, settings.Destination, cancellationToken);
+            saved = await client.ImportShareAsync(settings.Link, settings.Code, destination, settings.FileIds,
                 settings.Collect, cancellationToken);
+        }
 
         if (saved.Count == 0)
         {

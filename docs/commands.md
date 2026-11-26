@@ -15,11 +15,11 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 | `mkdir`, `rm`, `cp`, `mv` | `mkdir`, `remove`, `copy`, `move`, `rename` | Copy and move accept multiple sources and a destination directory. Move also supports one source and a new path. |
 | `d`, `download` | `download` | `--mode direct\|pcs\|stream`, `--link-index`, `--parallel`, `--file-concurrency`, `--retries`, `--worker-status`, `--test`, `--overwrite`, `--output-directory`, `--full-path`, `--preserve-mtime`, `--executable`, `--verify`, `--skip-verification`. |
 | `lt`, `locate` | `download-links` | Add `--pan` for the Pan web endpoint. |
-| `u`, `upload` | `upload` | Pass one or more sources and then the remote directory. Use `--parallel`, `--file-concurrency`, `--retries`, `--skip-rapid-check`, and `--conflict skip\|overwrite\|overwrite-if-size-differs`. |
+| `u`, `upload` | `upload` | Pass one or more sources and then the remote directory. Use `--as NAME` to rename a single file during upload. Use `--parallel`, `--file-concurrency`, `--retries`, `--skip-rapid-check`, and `--conflict skip\|overwrite\|overwrite-if-size-differs`. |
 | `sf`, `sumfile` | `checksum` | Size, MD5, first 256 KiB MD5, CRC32, and checksum-link output. |
 | `ep`, `export` | `export` | `--stdout` writes only records. `--out` appends to a file. Use `--format manifest\|checksum-link`, `--root`, `--recursive`, or `--retries`. |
 | `share set`, `share list`, `share cancel` | `share create`, `share list`, `share cancel` | Use `--code`, `--days`, `--combined`, and `list --page`. |
-| `transfer` | `share import` | Accepts a Baidu share URL or copied text. Use `--code`, repeat `--file-id`, and add `--collect` or `--download` as needed. |
+| `transfer` | `share import` | Accepts a Baidu share URL or copied text. Use `--destination PATH` to save outside the current remote directory. Use `--code`, repeat `--file-id`, and add `--collect` or `--download` as needed. |
 | Upstream proposal | `share inspect` | Outputs a JSON inventory for a share, including size totals and whether all directories were listed. |
 | `offlinedl`, `od`, `clouddl` | `offline add\|query\|list\|cancel\|delete` | Add accepts `--path`. List accepts `--page`. Deletion supports IDs or `--all`. |
 | `recycle` | `recycle list\|restore\|delete` | Use `list --page`. Permanent deletion supports IDs or `--all`. |
