@@ -6,6 +6,10 @@ namespace BaiduPCS.Cli;
 
 internal static class Program
 {
+    internal static string Version { get; } = typeof(Program).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
+    internal static bool RestartAfterUpdate { get; set; }
+
     private static async Task<int> Main(string[] args)
     {
         using var shutdown = new CancellationTokenSource();
@@ -21,6 +25,9 @@ internal static class Program
         Console.CancelKeyPress += cancel;
         try
         {
+            if (args.Length > 0 && args[0] == ApplyUpdateCommand.HelperCommand)
+                return await ApplyUpdateCommand.FinishWindowsUpdateAsync(args, shutdown.Token);
+
             return await RunAsync(args.Length == 0
                 ? [!Console.IsInputRedirected && !Console.IsOutputRedirected ? "shell" : "--help"] : args, shutdown.Token);
         }
@@ -37,8 +44,7 @@ internal static class Program
         app.Configure(config =>
         {
             config.SetApplicationName("baidupcs");
-            config.SetApplicationVersion(typeof(Program).Assembly
-                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0]);
+            config.SetApplicationVersion(Version);
             config.SetExceptionHandler((error, _) =>
             {
                 if (error is OperationCanceledException && cancellationToken.IsCancellationRequested)
@@ -136,6 +142,12 @@ internal static class Program
                 completions.Register<IpCommand>(branch, "tool", "ip").WithDescription("Show local and public IP addresses.");
                 completions.Register<EncryptCommand>(branch, "tool", "encrypt").WithDescription("Encrypt local files in the legacy format.");
                 completions.Register<DecryptCommand>(branch, "tool", "decrypt").WithDescription("Decrypt legacy encrypted files.");
+            });
+            config.AddBranch("update", branch =>
+            {
+                branch.SetDescription("Check for and install stable releases.");
+                completions.Register<CheckUpdateCommand>(branch, "update", "check").WithDescription("Check the latest stable release.");
+                completions.Register<ApplyUpdateCommand>(branch, "update", "apply").WithDescription("Install a newer stable release.");
             });
         });
         return app.RunAsync(args, cancellationToken);

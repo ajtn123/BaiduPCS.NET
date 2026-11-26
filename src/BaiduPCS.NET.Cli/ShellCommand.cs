@@ -72,6 +72,8 @@ internal sealed class ShellCommand : ProfileCommand<CommonSettings>
             if (args[0] == "help")
                 args = [.. args.Skip(1), "--help"];
             status = await Program.RunAsync(args, cancellationToken);
+            if (Program.RestartAfterUpdate)
+                return status;
         }
     }
 
