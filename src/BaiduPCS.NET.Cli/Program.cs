@@ -21,7 +21,8 @@ internal static class Program
         Console.CancelKeyPress += cancel;
         try
         {
-            return await RunAsync(args.Length == 0 ? ["--help"] : args, shutdown.Token);
+            return await RunAsync(args.Length == 0
+                ? [!Console.IsInputRedirected && !Console.IsOutputRedirected ? "shell" : "--help"] : args, shutdown.Token);
         }
         finally
         {
@@ -32,6 +33,7 @@ internal static class Program
     internal static Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
         var app = new CommandApp();
+        var completions = new ShellCompletions();
         app.Configure(config =>
         {
             config.SetApplicationName("baidupcs");
@@ -65,62 +67,66 @@ internal static class Program
             config.AddBranch("config", branch =>
             {
                 branch.SetDescription("Display and change client settings.");
-                branch.AddCommand<ShowConfigCommand>("show").WithDescription("Display the current settings.");
-                branch.AddCommand<SetConfigCommand>("set").WithDescription("Set one or more key=value options.");
-                branch.AddCommand<ResetConfigCommand>("reset").WithDescription("Restore the default client settings.");
+                completions.Register<ShowConfigCommand>(branch, "config", "show").WithDescription("Display the current settings.");
+                completions.Register<SetConfigCommand>(branch, "config", "set").WithDescription("Set one or more key=value options.");
+                completions.Register<ResetConfigCommand>(branch, "config", "reset").WithDescription("Restore the default client settings.");
             });
             config.AddBranch("account", branch =>
             {
                 branch.SetDescription("Manage Baidu accounts.");
-                branch.AddCommand<ImportAccountCommand>("import-go").WithDescription("Import a BaiduPCS-Go profile.");
-                branch.AddCommand<ListAccountsCommand>("list").WithDescription("List saved accounts.");
-                branch.AddCommand<CurrentAccountCommand>("current").WithDescription("Show the active account.");
-                branch.AddCommand<SwitchAccountCommand>("switch").WithDescription("Switch the active account.");
-                branch.AddCommand<LogoutCommand>("logout").WithDescription("Remove the active saved account.");
-                branch.AddCommand<SetAccessTokenCommand>("set-access-token").WithDescription("Update the active account's access token.");
+                completions.Register<ImportAccountCommand>(branch, "account", "import-go").WithDescription("Import a BaiduPCS-Go profile.");
+                completions.Register<ListAccountsCommand>(branch, "account", "list").WithDescription("List saved accounts.");
+                completions.Register<CurrentAccountCommand>(branch, "account", "current").WithDescription("Show the active account.");
+                completions.Register<SwitchAccountCommand>(branch, "account", "switch").WithDescription("Switch the active account.");
+                completions.Register<LogoutCommand>(branch, "account", "logout").WithDescription("Remove the active saved account.");
+                completions.Register<SetAccessTokenCommand>(branch, "account", "set-access-token").WithDescription("Update the active account's access token.");
             });
-            config.AddCommand<EnvironmentCommand>("env").WithDescription("Show configuration paths and environment variables.");
-            config.AddCommand<PrintWorkingDirectoryCommand>("pwd").WithDescription("Print the active account's remote working directory.");
-            config.AddCommand<QuotaCommand>("quota").WithDescription("Show total, used, and free storage space.");
-            config.AddCommand<ListFilesCommand>("list").WithDescription("List a remote directory.");
-            config.AddCommand<ChangeDirectoryCommand>("cd").WithDescription("Set the active account's remote working directory.");
-            config.AddCommand<SearchFilesCommand>("search").WithDescription("Find files by name.");
-            config.AddCommand<MetadataCommand>("metadata").WithDescription("Show metadata for remote paths.");
-            config.AddCommand<MatchCommand>("match").WithDescription("Expand a remote wildcard pattern.");
-            config.AddCommand<TreeCommand>("tree").WithDescription("Show a remote directory tree.");
-            config.AddCommand<CreateDirectoryCommand>("mkdir").WithDescription("Create remote directories.");
-            config.AddCommand<RemoveFilesCommand>("remove").WithDescription("Remove files or directories from the drive.");
-            config.AddCommand<CopyFilesCommand>("copy").WithDescription("Copy files or directories on the drive.");
-            config.AddCommand<MoveFilesCommand>("move").WithDescription("Move files or directories on the drive.");
-            config.AddCommand<RenameFileCommand>("rename").WithDescription("Rename a file or directory within its parent.");
-            config.AddCommand<DownloadLinksCommand>("download-links").WithDescription("Resolve direct or Pan web download links.");
-            config.AddCommand<DownloadCommand>("download").WithDescription("Download files and directory trees from Baidu Netdisk.");
-            config.AddCommand<UploadCommand>("upload").WithDescription("Upload local files or directory trees to a remote directory.");
-            config.AddCommand<ChecksumCommand>("checksum").WithDescription("Calculate Baidu file checksums and checksum links.");
-            config.AddCommand<ExportCommand>("export").WithDescription("Export remote file checksums and directory structure.");
+            completions.Register<EnvironmentCommand>(config, "env").WithDescription("Show configuration paths and environment variables.");
+            completions.Register<PrintWorkingDirectoryCommand>(config, "pwd").WithDescription("Print the active account's remote working directory.");
+            completions.Register<QuotaCommand>(config, "quota").WithDescription("Show total, used, and free storage space.");
+            completions.Register<ListFilesCommand>(config, "list").WithDescription("List a remote directory.");
+            completions.Register<ChangeDirectoryCommand>(config, "cd").WithDescription("Set the active account's remote working directory.");
+            completions.Register<SearchFilesCommand>(config, "search").WithDescription("Find files by name.");
+            completions.Register<MetadataCommand>(config, "metadata").WithDescription("Show metadata for remote paths.");
+            completions.Register<MatchCommand>(config, "match").WithDescription("Expand a remote wildcard pattern.");
+            completions.Register<TreeCommand>(config, "tree").WithDescription("Show a remote directory tree.");
+            completions.Register<CreateDirectoryCommand>(config, "mkdir").WithDescription("Create remote directories.");
+            completions.Register<RemoveFilesCommand>(config, "remove").WithDescription("Remove files or directories from the drive.");
+            completions.Register<CopyFilesCommand>(config, "copy").WithDescription("Copy files or directories on the drive.");
+            completions.Register<MoveFilesCommand>(config, "move").WithDescription("Move files or directories on the drive.");
+            completions.Register<RenameFileCommand>(config, "rename").WithDescription("Rename a file or directory within its parent.");
+            completions.Register<DownloadLinksCommand>(config, "download-links").WithDescription("Resolve direct or Pan web download links.");
+            completions.Register<DownloadCommand>(config, "download").WithDescription("Download files and directory trees from Baidu Netdisk.");
+            completions.Register<UploadCommand>(config, "upload").WithDescription("Upload local files or directory trees to a remote directory.");
+            completions.Register<ChecksumCommand>(config, "checksum").WithDescription("Calculate Baidu file checksums and checksum links.");
+            completions.Register<ExportCommand>(config, "export").WithDescription("Export remote file checksums and directory structure.");
+            completions.Register<ShellCommand>(config, "shell").WithData(completions).WithDescription("Start the interactive shell.");
+            completions.Register<RunProcessCommand>(config, "run").WithDescription("Run a local executable with 'run -- EXECUTABLE ARG...'.");
+            completions.Register<ClearCommand>(config, "clear").WithDescription("Clear the terminal.");
+            completions.Register<ExitCommand>(config, "exit").WithDescription("Exit the BaiduPCS.NET shell.");
             config.AddBranch("offline", branch =>
             {
                 branch.SetDescription("Manage server-side download tasks.");
-                branch.AddCommand<AddOfflineCommand>("add").WithDescription("Submit URLs for Baidu to download.");
-                branch.AddCommand<QueryOfflineCommand>("query").WithDescription("Show specific offline tasks.");
-                branch.AddCommand<ListOfflineCommand>("list").WithDescription("List offline tasks.");
-                branch.AddCommand<CancelOfflineCommand>("cancel").WithDescription("Cancel running offline tasks.");
-                branch.AddCommand<DeleteOfflineCommand>("delete").WithDescription("Delete offline task records.");
+                completions.Register<AddOfflineCommand>(branch, "offline", "add").WithDescription("Submit URLs for Baidu to download.");
+                completions.Register<QueryOfflineCommand>(branch, "offline", "query").WithDescription("Show specific offline tasks.");
+                completions.Register<ListOfflineCommand>(branch, "offline", "list").WithDescription("List offline tasks.");
+                completions.Register<CancelOfflineCommand>(branch, "offline", "cancel").WithDescription("Cancel running offline tasks.");
+                completions.Register<DeleteOfflineCommand>(branch, "offline", "delete").WithDescription("Delete offline task records.");
             });
             config.AddBranch("recycle", branch =>
             {
                 branch.SetDescription("Manage the drive's recycle bin.");
-                branch.AddCommand<ListRecycleCommand>("list").WithDescription("List deleted files.");
-                branch.AddCommand<RestoreRecycleCommand>("restore").WithDescription("Restore files from the recycle bin.");
-                branch.AddCommand<DeleteRecycleCommand>("delete").WithDescription("Permanently delete recycle-bin files.");
+                completions.Register<ListRecycleCommand>(branch, "recycle", "list").WithDescription("List deleted files.");
+                completions.Register<RestoreRecycleCommand>(branch, "recycle", "restore").WithDescription("Restore files from the recycle bin.");
+                completions.Register<DeleteRecycleCommand>(branch, "recycle", "delete").WithDescription("Permanently delete recycle-bin files.");
             });
             config.AddBranch("share", branch =>
             {
                 branch.SetDescription("Create, manage, and import Baidu shares.");
-                branch.AddCommand<CreateShareCommand>("create").WithDescription("Create a protected share for remote paths.");
-                branch.AddCommand<ListSharesCommand>("list").WithDescription("List the active account's shares.");
-                branch.AddCommand<CancelShareCommand>("cancel").WithDescription("Cancel shares by ID.");
-                branch.AddCommand<ImportShareCommand>("import").WithDescription("Save shared files to the current remote directory.");
+                completions.Register<CreateShareCommand>(branch, "share", "create").WithDescription("Create a protected share for remote paths.");
+                completions.Register<ListSharesCommand>(branch, "share", "list").WithDescription("List the active account's shares.");
+                completions.Register<CancelShareCommand>(branch, "share", "cancel").WithDescription("Cancel shares by ID.");
+                completions.Register<ImportShareCommand>(branch, "share", "import").WithDescription("Save shared files to the current remote directory.");
             });
         });
         return app.RunAsync(args, cancellationToken);
