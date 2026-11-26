@@ -10,8 +10,9 @@
     <VersionSuffix>dev</VersionSuffix>
     <Description>A command-line client for Baidu Netdisk.</Description>
     <RepositoryUrl>https://github.com/ajtn123/BaiduPCS.NET</RepositoryUrl>
-    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageLicenseExpression>MIT AND Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <DefineConstants Condition="'$(PublishSingleFile)' == 'true'">$(DefineConstants);BAIDUPCS_STANDALONE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Spectre.Console.Cli" Version="0.57.2" />
@@ -19,5 +20,7 @@
     <InternalsVisibleTo Include="BaiduPCS.NET.Tests" />
     <None Include="../../LICENSE" Pack="true" PackagePath="" />
     <None Include="../../README.md" Pack="true" PackagePath="" />
+    <None Include="../../THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="" />
+    <None Include="../../licenses/*.txt" Pack="true" PackagePath="licenses/" />
   </ItemGroup>
 </Project>

@@ -1,3 +1,4 @@
+// Adapts the BaiduPCS-Go checksum encoding to .NET. See THIRD-PARTY-NOTICES.md.
 using System.Buffers;
 using System.Globalization;
 using System.Security.Cryptography;

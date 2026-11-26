@@ -1,3 +1,4 @@
+// Adapts the BaiduPCS-Go encrypted-file format to .NET. See THIRD-PARTY-NOTICES.md.
 using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Compression;

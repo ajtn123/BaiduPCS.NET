@@ -1,3 +1,4 @@
+// Adapts the BaiduPCS-Go share protocol to .NET. See THIRD-PARTY-NOTICES.md.
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;

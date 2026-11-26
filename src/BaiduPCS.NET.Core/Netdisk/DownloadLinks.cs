@@ -1,3 +1,4 @@
+// Adapts the BaiduPCS-Go link discovery to .NET. See THIRD-PARTY-NOTICES.md.
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;

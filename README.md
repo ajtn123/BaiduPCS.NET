@@ -63,4 +63,4 @@ See [Architecture and API design](docs/architecture.md) for the implementation a
 
 ## License
 
-Original BaiduPCS.NET work uses the [MIT license](LICENSE). Upstream-derived material carries the applicable BaiduPCS-Go license and attribution.
+Original BaiduPCS.NET work uses the MIT license. The notices identify the BaiduPCS-Go contributors and Apache-licensed material, and link to the issue and pull request review. [MIT license](LICENSE), [Third-party notices](THIRD-PARTY-NOTICES.md)

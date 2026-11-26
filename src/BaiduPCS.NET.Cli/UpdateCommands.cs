@@ -42,7 +42,11 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        bool standalone = typeof(Program).Assembly.Location.Length == 0;
+#if BAIDUPCS_STANDALONE
+        bool standalone = true;
+#else
+        bool standalone = false;
+#endif
         string scope = settings.Scope ?? (settings.ToolPath is not null ? "tool-path" : standalone ? "standalone" : "global");
         if (scope == "standalone" && !standalone)
             throw new ArgumentException("The standalone update scope requires a single-file BaiduPCS.NET executable.");
