@@ -13,7 +13,8 @@ internal sealed class ShowConfigCommand : ProfileCommand<CommonSettings>
     {
         PropertyNamingPolicy = JsonNamingPolicy.KebabCaseLower,
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter<UploadConflict>(JsonNamingPolicy.KebabCaseLower) },
+        Converters = { new JsonStringEnumConverter<UploadConflict>(JsonNamingPolicy.KebabCaseLower),
+            new JsonStringEnumConverter<NetworkFamily>(JsonNamingPolicy.KebabCaseLower) },
     };
 
     public override async Task<int> ExecuteAsync(CommandContext context, CommonSettings settings, CancellationToken cancellationToken)
@@ -71,6 +72,7 @@ internal sealed partial class SetConfigCommand : ProfileCommand<SetConfigCommand
         "download-rate" => settings with { DownloadRate = ParseBytes(value, isRate: true) },
         "upload-rate" => settings with { UploadRate = ParseBytes(value, isRate: true) },
         "save-directory" => settings with { SaveDirectory = Path.GetFullPath(value) },
+        "download-prefix" => settings with { DownloadPrefix = value == "@account" ? null : value },
         "use-https" => settings with { UseHttps = bool.Parse(value) },
         "check-upload-names" => settings with { CheckUploadNames = bool.Parse(value) },
         "manual-account-name" => settings with { ManualAccountName = value },
@@ -84,6 +86,13 @@ internal sealed partial class SetConfigCommand : ProfileCommand<SetConfigCommand
         "proxy" => settings with { Proxy = value },
         "proxy-hosts" => settings with { ProxyHosts = value },
         "local-addresses" => settings with { LocalAddresses = value },
+        "network-family" => settings with { NetworkFamily = value switch
+        {
+            "auto" => NetworkFamily.Auto,
+            "prefer-ipv6" => NetworkFamily.PreferIpv6,
+            "ipv4" => NetworkFamily.Ipv4,
+            _ => throw new ArgumentException("Use auto, prefer-ipv6, or ipv4 as the network family."),
+        } },
         _ => throw new ArgumentException("Unknown setting. Use 'config show' for valid keys."),
     };
 

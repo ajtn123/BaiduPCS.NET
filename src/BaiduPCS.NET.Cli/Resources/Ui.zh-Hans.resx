@@ -52,6 +52,7 @@
   <data name="List the active account's shares." xml:space="preserve"><value>列出当前帐号的分享。</value></data>
   <data name="Cancel shares by ID." xml:space="preserve"><value>按 ID 取消分享。</value></data>
   <data name="Save shared files to the current remote directory." xml:space="preserve"><value>将分享文件转存到当前网盘目录。</value></data>
+  <data name="List files in a Baidu share without importing them." xml:space="preserve"><value>仅列出百度分享中的文件。</value></data>
   <data name="Run local utilities." xml:space="preserve"><value>使用本地工具。</value></data>
   <data name="Show the current time in Beijing." xml:space="preserve"><value>查看当前北京时间。</value></data>
   <data name="Show local and public IP addresses." xml:space="preserve"><value>查看本地和公网 IP 地址。</value></data>

@@ -134,6 +134,7 @@ internal static class Program
                 completions.Register<ListSharesCommand>(branch, "share", "list").WithDescription(Ui.Text("List the active account's shares."));
                 completions.Register<CancelShareCommand>(branch, "share", "cancel").WithDescription(Ui.Text("Cancel shares by ID."));
                 completions.Register<ImportShareCommand>(branch, "share", "import").WithDescription(Ui.Text("Save shared files to the current remote directory."));
+                completions.Register<InspectShareCommand>(branch, "share", "inspect").WithDescription(Ui.Text("List files in a Baidu share without importing them."));
             });
             config.AddBranch("tool", branch =>
             {

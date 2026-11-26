@@ -184,28 +184,31 @@ internal sealed class BaiduTransport : IDisposable
             handler.Proxy = new ScopedProxy(settings.Proxy, settings.ProxyHosts);
 
         string[] addresses = settings.LocalAddresses.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (addresses.Length > 0)
+        if (addresses.Length > 0 || settings.NetworkFamily != NetworkFamily.Auto)
         {
             IPAddress[] bindAddresses = addresses.Select(value => IPAddress.TryParse(value, out IPAddress? address)
                 ? address : throw new ArgumentException("Local addresses must be IPv4 or IPv6 addresses.")).ToArray();
-            handler.ConnectCallback = (context, token) => ConnectAsync(context.DnsEndPoint, bindAddresses, token);
+            handler.ConnectCallback = (context, token) => ConnectAsync(context.DnsEndPoint, bindAddresses, settings.NetworkFamily, token);
         }
 
         return handler;
     }
 
-    private static async ValueTask<Stream> ConnectAsync(DnsEndPoint destination, IPAddress[] local, CancellationToken token)
+    private static async ValueTask<Stream> ConnectAsync(DnsEndPoint destination, IPAddress[] local, NetworkFamily family, CancellationToken token)
     {
         IPAddress[] remote = await Dns.GetHostAddressesAsync(destination.Host, token);
         SocketException? lastError = null;
-        foreach (IPAddress address in remote)
+        foreach (IPAddress address in OrderAddresses(remote, family))
         {
-            foreach (IPAddress source in local.Where(candidate => candidate.AddressFamily == address.AddressFamily))
+            IEnumerable<IPAddress?> bindings = local.Length == 0 ? [null]
+                : local.Where(candidate => candidate.AddressFamily == address.AddressFamily).Cast<IPAddress?>();
+            foreach (IPAddress? source in bindings)
             {
                 var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
                 try
                 {
-                    socket.Bind(new IPEndPoint(source, 0));
+                    if (source is not null)
+                        socket.Bind(new IPEndPoint(source, 0));
                     await socket.ConnectAsync(new IPEndPoint(address, destination.Port), token);
                     return new NetworkStream(socket, ownsSocket: true);
                 }
@@ -222,8 +225,15 @@ internal sealed class BaiduTransport : IDisposable
             }
         }
 
-        throw new HttpRequestException("Unable to connect using the configured local addresses.", lastError);
+        throw new HttpRequestException("Unable to connect using the configured network addresses.", lastError);
     }
+
+    internal static IEnumerable<IPAddress> OrderAddresses(IEnumerable<IPAddress> addresses, NetworkFamily family) => family switch
+    {
+        NetworkFamily.Ipv4 => addresses.Where(address => address.AddressFamily == AddressFamily.InterNetwork),
+        NetworkFamily.PreferIpv6 => addresses.OrderByDescending(address => address.AddressFamily == AddressFamily.InterNetworkV6),
+        _ => addresses,
+    };
 
     internal static Dictionary<string, string> ParseCookies(string cookieHeader)
     {

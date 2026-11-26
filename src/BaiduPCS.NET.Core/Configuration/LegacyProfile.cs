@@ -113,6 +113,7 @@ public static class LegacyProfile
             DownloadRate = Math.Max(0, Read(root, "max_download_rate", defaults.DownloadRate)),
             UploadRate = Math.Max(0, Read(root, "max_upload_rate", defaults.UploadRate)),
             SaveDirectory = Read(root, "savedir", defaults.SaveDirectory),
+            DownloadPrefix = Read(root, "save_prefix", defaults.DownloadPrefix),
             UseHttps = Read(root, "enable_https", defaults.UseHttps),
             CheckUploadNames = !Read(root, "ignore_illegal", !defaults.CheckUploadNames),
             ManualAccountName = Read(root, "force_login_username", defaults.ManualAccountName),
@@ -132,6 +133,7 @@ public static class LegacyProfile
             Proxy = Read(root, "proxy", defaults.Proxy),
             ProxyHosts = Read(root, "proxy_hostnames", defaults.ProxyHosts),
             LocalAddresses = Read(root, "local_addrs", defaults.LocalAddresses),
+            NetworkFamily = Read(root, "prefer_ipv6", false) ? NetworkFamily.PreferIpv6 : NetworkFamily.Auto,
         };
     }
 

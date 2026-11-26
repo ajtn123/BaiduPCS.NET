@@ -38,8 +38,9 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
         {
             var account = profile.RequireAccount();
             string[] sources = await ExpandAsync(client, account, settings.Paths, cancellationToken);
-            string outputRoot = Path.GetFullPath(settings.OutputDirectory ?? Path.Combine(profile.Settings.SaveDirectory,
-                DownloadDestination.SafeName($"{account.Id}_{account.Name}")));
+            string outputRoot = settings.OutputDirectory is { } selected ? Path.GetFullPath(selected)
+                : profile.Settings.DownloadPrefix is { } prefix ? DownloadDestination.ResolvePrefix(profile.Settings.SaveDirectory, prefix)
+                : Path.GetFullPath(Path.Combine(profile.Settings.SaveDirectory, DownloadDestination.SafeName($"{account.Id}_{account.Name}")));
             IReadOnlyCollection<DownloadItem> items = await PlanDownloadsAsync(client, sources, outputRoot, settings.FullPath, cancellationToken);
             if (!settings.Test)
             {

@@ -61,6 +61,8 @@ public enum UploadConflict
     OverwriteIfSizeDiffers,
 }
 
+public enum NetworkFamily { Auto, PreferIpv6, Ipv4 }
+
 public sealed record ClientSettings
 {
     public const string DefaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36";
@@ -76,6 +78,7 @@ public sealed record ClientSettings
     public long UploadRate { get; init; }
     public string SaveDirectory { get; init; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+    public string? DownloadPrefix { get; init; }
     public bool UseHttps { get; init; } = true;
     public bool CheckUploadNames { get; init; }
     public string ManualAccountName { get; init; } = "";
@@ -89,6 +92,7 @@ public sealed record ClientSettings
     public string Proxy { get; init; } = "";
     public string ProxyHosts { get; init; } = "";
     public string LocalAddresses { get; init; } = "";
+    public NetworkFamily NetworkFamily { get; init; }
 
     public override string ToString() => nameof(ClientSettings);
 }

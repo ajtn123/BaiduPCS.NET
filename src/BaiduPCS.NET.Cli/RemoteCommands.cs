@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Text.Json;
 using BaiduPCS.Configuration;
 using BaiduPCS.Netdisk;
 using Spectre.Console;
@@ -100,6 +101,9 @@ internal sealed class ListFilesCommand : RemoteCommand<ListFilesCommand.Settings
 
         [CommandOption("--descending")]
         public bool Descending { get; init; }
+
+        [CommandOption("--json")]
+        public bool Json { get; init; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -109,7 +113,7 @@ internal sealed class ListFilesCommand : RemoteCommand<ListFilesCommand.Settings
         {
             string path = await client.MatchOneAsync(account.WorkingDirectory, settings.Path, cancellationToken);
             FileOutput.Write(await client.ListAsync(path, settings.Sort, settings.Descending, cancellationToken)
-                .ToArrayAsync(cancellationToken), settings.Totals);
+                .ToArrayAsync(cancellationToken), settings.Totals, json: settings.Json);
         }
 
         return 0;
@@ -166,6 +170,9 @@ internal sealed class SearchFilesCommand : RemoteCommand<SearchFilesCommand.Sett
 
         [CommandOption("--totals")]
         public bool Totals { get; init; }
+
+        [CommandOption("--json")]
+        public bool Json { get; init; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -175,7 +182,7 @@ internal sealed class SearchFilesCommand : RemoteCommand<SearchFilesCommand.Sett
         {
             string path = await client.MatchOneAsync(account.WorkingDirectory, settings.Path, cancellationToken);
             FileOutput.Write(await client.SearchAsync(path, settings.Keyword, settings.Recursive, cancellationToken),
-                settings.Totals, fullPaths: true);
+                settings.Totals, fullPaths: true, json: settings.Json);
         }
 
         return 0;
@@ -194,6 +201,9 @@ internal sealed class MetadataCommand : RemoteCommand<MetadataCommand.Settings>
     {
         [CommandArgument(0, "[path]")]
         public string[] Paths { get; init; } = [];
+
+        [CommandOption("--json")]
+        public bool Json { get; init; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -203,7 +213,7 @@ internal sealed class MetadataCommand : RemoteCommand<MetadataCommand.Settings>
         {
             string[] paths = await ExpandAsync(client, account, settings.Paths.Length == 0 ? ["."] : settings.Paths, cancellationToken);
             IReadOnlyList<RemoteEntry> entries = await client.GetMetadataAsync(paths, cancellationToken);
-            FileOutput.Write(entries, details: true, fullPaths: true);
+            FileOutput.Write(entries, details: true, fullPaths: true, json: settings.Json);
             string[] missing = paths.Except(entries.Select(entry => entry.Path), StringComparer.Ordinal).ToArray();
             foreach (string path in missing)
                 Console.Error.WriteLine($"No metadata returned for {path}.");
@@ -360,8 +370,16 @@ internal sealed class RenameFileCommand() : RelocateFilesCommand(copy: false, re
 
 internal static class FileOutput
 {
-    internal static void Write(IReadOnlyCollection<RemoteEntry> entries, bool details = false, bool fullPaths = false)
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    internal static void Write(IReadOnlyCollection<RemoteEntry> entries, bool details = false, bool fullPaths = false, bool json = false)
     {
+        if (json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(entries, Json));
+            return;
+        }
+
         var table = new Table().AddColumns("Name", "Bytes", "Modified");
         if (details)
             table.AddColumns("File ID", "App ID", "Created", "MD5", "Blocks");

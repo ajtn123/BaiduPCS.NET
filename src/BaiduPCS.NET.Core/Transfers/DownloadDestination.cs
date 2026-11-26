@@ -21,6 +21,16 @@ public static class DownloadDestination
         return destination;
     }
 
+    public static string ResolvePrefix(string root, string prefix)
+    {
+        string portable = prefix.Replace('\\', '/');
+        if (Path.IsPathRooted(prefix) || portable.StartsWith('/') || portable.Contains(':')
+            || portable.Split('/').Any(component => component is "." or ".."))
+            throw new ArgumentException("The download prefix must be relative to the save directory.");
+
+        return Resolve(root, portable);
+    }
+
     public static void CreateSafeDirectory(string root, string directory)
     {
         string relative = Path.GetRelativePath(root, directory);

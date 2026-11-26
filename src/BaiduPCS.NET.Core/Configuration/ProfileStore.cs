@@ -11,7 +11,8 @@ public sealed class ProfileStore(string directory)
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter<UploadConflict>(JsonNamingPolicy.KebabCaseLower) },
+        Converters = { new JsonStringEnumConverter<UploadConflict>(JsonNamingPolicy.KebabCaseLower),
+            new JsonStringEnumConverter<NetworkFamily>(JsonNamingPolicy.KebabCaseLower) },
     };
 
     public const string DirectoryVariable = "BAIDUPCS_CONFIG_DIR";

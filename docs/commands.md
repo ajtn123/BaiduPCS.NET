@@ -9,9 +9,9 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 | `setastoken` | `account set-access-token` | Enter the token at the masked prompt or supply `--stdin`. |
 | `quota` | `quota` | Total, used, and free space. |
 | `cd`, `pwd` | `cd`, `pwd` | `cd --list` also lists the target. |
-| `ls`, `l`, `ll` | `list` | `--totals`, `--sort name\|time\|size`, `--descending`. |
-| `search`, `s` | `search` | `--path`, `--recursive`, and `--totals`. |
-| `tree`, `t`, `meta`, `match` | `tree`, `metadata`, `match` | `tree --depth` limits recursion and `--file-ids` displays IDs. |
+| `ls`, `l`, `ll` | `list` | `--totals`, `--sort name\|time\|size`, `--descending`, `--json`. |
+| `search`, `s` | `search` | `--path`, `--recursive`, `--totals`, and `--json`. |
+| `tree`, `t`, `meta`, `match` | `tree`, `metadata`, `match` | `tree --depth` limits recursion and `--file-ids` displays IDs. `metadata --json` returns full paths and file IDs. |
 | `mkdir`, `rm`, `cp`, `mv` | `mkdir`, `remove`, `copy`, `move`, `rename` | Copy and move accept multiple sources and a destination directory. Move also supports one source and a new path. |
 | `d`, `download` | `download` | `--mode direct\|pcs\|stream`, `--link-index`, `--parallel`, `--file-concurrency`, `--retries`, `--worker-status`, `--test`, `--overwrite`, `--output-directory`, `--full-path`, `--preserve-mtime`, `--executable`, `--verify`, `--skip-verification`. |
 | `lt`, `locate` | `download-links` | Add `--pan` for the Pan web endpoint. |
@@ -20,6 +20,7 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 | `ep`, `export` | `export` | `--stdout` writes only records. `--out` appends to a file. Use `--format manifest\|checksum-link`, `--root`, `--recursive`, or `--retries`. |
 | `share set`, `share list`, `share cancel` | `share create`, `share list`, `share cancel` | Use `--code`, `--days`, `--combined`, and `list --page`. |
 | `transfer` | `share import` | Accepts a Baidu share URL or copied text. Use `--code`, repeat `--file-id`, and add `--collect` or `--download` as needed. |
+| Upstream proposal | `share inspect` | Outputs a JSON inventory for a share, including size totals and whether all directories were listed. |
 | `offlinedl`, `od`, `clouddl` | `offline add\|query\|list\|cancel\|delete` | Add accepts `--path`. List accepts `--page`. Deletion supports IDs or `--all`. |
 | `recycle` | `recycle list\|restore\|delete` | Use `list --page`. Permanent deletion supports IDs or `--all`. |
 | `config`, `config set`, `config reset`, `env` | `config show`, `config set KEY=VALUE...`, `config reset`, `env` | `config show` lists supported kebab-case setting names. Use `BAIDUPCS_CONFIG_DIR` and `BAIDUPCS_VERBOSE`. |
@@ -37,6 +38,8 @@ baidupcs export /backup --recursive --root /restored --stdout
 ```
 
 Direct download is the default. If it is unavailable for the account or region, try `--mode pcs` or `--mode stream`. `--link-index` is zero-based. `--test` reads the data without creating local output. Verification uses metadata hashes where suitable and always validates transfer length. An existing destination is skipped unless `--overwrite` is set.
+
+The default save directory contains a subdirectory named for the active account. Set `download-prefix=` to save directly to the configured directory, or `download-prefix=shared` for a shared subdirectory. Use `download-prefix=@account` to restore the per-account layout. `network-family=prefer-ipv6` tries IPv6 first and falls back to IPv4. `network-family=ipv4` restricts connections to IPv4.
 
 An export manifest is newline-delimited JSON. File records contain `type`, `path`, `length`, `md5`, `sliceMd5`, and `crc32`. Empty directories produce `directory` records. `--format checksum-link` emits the Go-compatible `MD5#sliceMD5#length#name` file records. The Go command's inactive rapid-link import and random-rename switch do not provide an available restore workflow.
 

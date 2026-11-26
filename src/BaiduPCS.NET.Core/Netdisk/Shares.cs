@@ -10,6 +10,13 @@ public sealed record CreatedShare(long Id, Uri Link, string Code);
 
 public sealed record ShareRecord(long Id, string Link, string Path, string? Code, bool Expired, DateTimeOffset? Expires, long Views);
 
+public sealed record SharedFile(long Id, string Path, string Name, long Size, bool IsDirectory, DateTimeOffset Modified);
+
+public sealed record ShareInventory(IReadOnlyList<SharedFile> Files, int Requests, bool Truncated, IReadOnlyList<string> UnlistedDirectories)
+{
+    public bool Complete => !Truncated && UnlistedDirectories.Count == 0;
+}
+
 public sealed partial class NetdiskClient
 {
     public async Task<CreatedShare> CreateShareAsync(IReadOnlyCollection<string> paths, string? code, int days,
@@ -79,12 +86,135 @@ public sealed partial class NetdiskClient
     public async Task<IReadOnlyList<string>> ImportShareAsync(string input, string? code, string destination,
         IReadOnlyCollection<long> requestedIds, bool collect, CancellationToken cancellationToken = default)
     {
+        if (requestedIds.Any(id => id <= 0))
+            throw new ArgumentException("Share file IDs must be positive.");
+
+        ShareSession session = await OpenShareAsync(input, code, cancellationToken);
+        Uri share = session.Link;
+        SharePageState page = session.Page;
+        var items = new Dictionary<long, string>();
+        for (int index = 1; ; index++)
+        {
+            JsonElement listing = await ListSharePageAsync(session, null, index, cancellationToken);
+            JsonElement[] batch = listing.Items("list").ToArray();
+            int before = items.Count;
+            foreach (JsonElement value in batch)
+            {
+                long id = value.Number("fs_id");
+                if (id > 0)
+                    items.TryAdd(id, value.Text("server_filename"));
+            }
+            if (batch.Length < 100)
+                break;
+            if (index == 200 || before == items.Count)
+                throw new InvalidDataException("Baidu did not return a complete list of shared files.");
+        }
+
+        long[] selected = (requestedIds.Count == 0 ? items.Keys : requestedIds).Distinct().ToArray();
+        if (selected.Length == 0)
+            throw new InvalidOperationException("The share contains no selectable files.");
+
+        if (collect && selected.Length > 1)
+        {
+            string first = selected.Select(id => items.GetValueOrDefault(id)).FirstOrDefault(name => name is { Length: > 0 }) ?? "";
+            string name = first.Length != 0 && !first.Contains('/') ? first + " and other files" : "Shared files";
+            destination = RemotePath.Resolve(destination, name);
+            await CreateDirectoryAsync(destination, cancellationToken);
+        }
+
+        Uri transfer = ShareUrl("transfer", ("app_id", BaiduTransport.PanAppId), ("channel", "chunlei"), ("clienttype", "0"),
+            ("web", "1"), ("shareid", page.ShareId), ("from", page.Owner), ("bdstoken", page.SessionToken));
+        using var transferForm = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["fsidlist"] = JsonSerializer.Serialize(selected),
+            ["path"] = destination,
+        });
+        JsonElement result = await _transport.JsonAsync(HttpMethod.Post, transfer, "share import", true, cancellationToken,
+            transferForm, configure: request => request.Headers.Referrer = share);
+
+        return result.Items("info").Select(item => item.Text("path")).Where(RemotePath.IsAbsolute).ToArray();
+    }
+
+    public async Task<ShareInventory> InspectShareAsync(string input, string? code, CancellationToken cancellationToken = default)
+    {
+        ShareSession session = await OpenShareAsync(input, code, cancellationToken);
+        const int requestLimit = 200;
+        const int entryLimit = 20_000;
+        var requests = new Queue<string?>();
+        requests.Enqueue(null);
+        var entries = new List<SharedFile>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var failed = new List<string>();
+        int requestCount = 0;
+        bool truncated = false;
+        string? root = null;
+        while (requests.TryDequeue(out string? directory) && !truncated)
+        {
+            for (int page = 1; ; page++)
+            {
+                if (requestCount == requestLimit || entries.Count == entryLimit)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                if (requestCount++ > 0)
+                    await Task.Delay(300, cancellationToken);
+                JsonElement result;
+                try
+                {
+                    result = await ListSharePageAsync(session, directory, page, cancellationToken);
+                }
+                catch (Exception error) when (directory is not null && error is BaiduApiException or InvalidDataException or HttpRequestException)
+                {
+                    failed.Add(directory);
+                    break;
+                }
+
+                int added = 0;
+                JsonElement[] batch = result.Items("list").ToArray();
+                foreach (JsonElement item in batch)
+                {
+                    string path = item.Text("path");
+                    if (!RemotePath.IsAbsolute(path) || RemotePath.Resolve("/", path) != path
+                        || (directory is not null && RemotePath.Parent(path) != directory) || !seen.Add(path))
+                        continue;
+                    if (entries.Count == entryLimit)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    root ??= RemotePath.Parent(path);
+                    string relative = root != "/" && path.StartsWith(root + '/', StringComparison.Ordinal) ? path[root.Length..] : path;
+                    string name = AccountIdentity.Value(item, "server_filename", "filename");
+                    bool isDirectory = item.Number("isdir") == 1;
+                    entries.Add(new SharedFile(item.Number("fs_id"), relative, name.Length == 0 ? RemotePath.Name(path) : name,
+                        item.Number("size"), isDirectory, DateTimeOffset.FromUnixTimeSeconds(item.Number("server_mtime"))));
+                    if (isDirectory)
+                        requests.Enqueue(path);
+                    added++;
+                }
+
+                if (batch.Length < 100 || truncated)
+                    break;
+                if (added == 0)
+                {
+                    truncated = true;
+                    break;
+                }
+            }
+        }
+
+        return new ShareInventory(entries, requestCount, truncated, failed);
+    }
+
+    private async Task<ShareSession> OpenShareAsync(string input, string? code, CancellationToken cancellationToken)
+    {
         (string token, string? embeddedCode) = ParseShare(input);
         code ??= embeddedCode;
         if (code is not null)
             ValidateExtractionCode(code);
-        if (requestedIds.Any(id => id <= 0))
-            throw new ArgumentException("Share file IDs must be positive.");
 
         Uri share = BaiduTransport.Build("https", BaiduTransport.PanHost, $"/s/{token}");
         SharePageState page = await ReadSharePageAsync(share, _transport.PanPage("/disk/home"), cancellationToken);
@@ -104,35 +234,22 @@ public sealed partial class NetdiskClient
             page = await ReadSharePageAsync(share, ShareUrl("init", ("surl", token[1..])), cancellationToken);
         }
 
-        Uri listUrl = ShareUrl("list", ("bdstoken", page.SessionToken), ("root", "1"), ("web", "5"),
-            ("app_id", BaiduTransport.PanAppId), ("shorturl", token[1..]), ("channel", "chunlei"));
-        JsonElement listing = await _transport.JsonAsync(HttpMethod.Get, listUrl, "shared file listing", true, cancellationToken,
-            configure: request => request.Headers.Referrer = share);
-        var items = listing.Items("list").Select(value => (Id: value.Number("fs_id"), Name: value.Text("server_filename")))
-            .Where(item => item.Id > 0).ToArray();
-        long[] selected = (requestedIds.Count == 0 ? items.Select(item => item.Id) : requestedIds).Distinct().ToArray();
-        if (selected.Length == 0)
-            throw new InvalidOperationException("The share contains no selectable files.");
+        return new ShareSession(share, token[1..], page);
+    }
 
-        if (collect && selected.Length > 1)
-        {
-            string first = items.FirstOrDefault(item => selected.Contains(item.Id)).Name ?? "";
-            string name = first.Length != 0 && !first.Contains('/') ? first + " and other files" : "Shared files";
-            destination = RemotePath.Resolve(destination, name);
-            await CreateDirectoryAsync(destination, cancellationToken);
-        }
-
-        Uri transfer = ShareUrl("transfer", ("app_id", BaiduTransport.PanAppId), ("channel", "chunlei"), ("clienttype", "0"),
-            ("web", "1"), ("shareid", page.ShareId), ("from", page.Owner), ("bdstoken", page.SessionToken));
-        using var transferForm = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["fsidlist"] = JsonSerializer.Serialize(selected),
-            ["path"] = destination,
-        });
-        JsonElement result = await _transport.JsonAsync(HttpMethod.Post, transfer, "share import", true, cancellationToken,
-            transferForm, configure: request => request.Headers.Referrer = share);
-
-        return result.Items("info").Select(item => item.Text("path")).Where(RemotePath.IsAbsolute).ToArray();
+    private async Task<JsonElement> ListSharePageAsync(ShareSession session, string? directory, int page, CancellationToken token)
+    {
+        (string Key, string Value)[] location = directory is null
+            ? [("root", "1"), ("shorturl", session.ShortId), ("web", "5")]
+            : [("dir", directory), ("uk", session.Page.Owner), ("shareid", session.Page.ShareId), ("web", "1"),
+                ("order", "other"), ("desc", "1"), ("showempty", "0"), ("clienttype", "0")];
+        Uri url = ShareUrl("list", [("bdstoken", session.Page.SessionToken), ("app_id", BaiduTransport.PanAppId), ("channel", "chunlei"),
+            ("page", BaiduTransport.Format(page)), ("num", "100"), .. location]);
+        JsonElement listing = await _transport.JsonAsync(HttpMethod.Get, url, "shared file listing", true, token,
+            configure: request => request.Headers.Referrer = session.Link);
+        if (listing.Field("list").ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("Baidu did not return a shared file list.");
+        return listing;
     }
 
     internal static (string Token, string? Code) ParseShare(string input)
@@ -187,4 +304,5 @@ public sealed partial class NetdiskClient
     }
 
     private sealed record SharePageState(string Owner, string ShareId, string SessionToken);
+    private sealed record ShareSession(Uri Link, string ShortId, SharePageState Page);
 }

@@ -130,7 +130,7 @@ internal sealed class ShellCommand : ProfileCommand<CommonSettings>
     internal static bool CanRecord(string[] args) => args switch
     {
         ["run", ..] or ["account", "login" or "import-go" or "set-access-token", ..]
-            or ["tool", "encrypt" or "decrypt", ..] or ["share", "create" or "import", ..]
+            or ["tool", "encrypt" or "decrypt", ..] or ["share", "create" or "import" or "inspect", ..]
             or ["offline", "add", ..] or ["config", "set", ..] => false,
         _ => true,
     };

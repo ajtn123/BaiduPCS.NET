@@ -11,6 +11,43 @@ namespace BaiduPCS.Tests;
 public sealed class NetdiskClientTests
 {
     [Fact]
+    public void PrefersIpv6AndKeepsIpv4AvailableForFallback()
+    {
+        IPAddress ipv4 = IPAddress.Parse("192.0.2.9");
+        IPAddress ipv6 = IPAddress.Parse("2001:db8::9");
+        Assert.Equal([ipv6, ipv4], BaiduTransport.OrderAddresses([ipv4, ipv6], NetworkFamily.PreferIpv6));
+        Assert.Equal([ipv4], BaiduTransport.OrderAddresses([ipv6, ipv4], NetworkFamily.Ipv4));
+    }
+
+    [Fact]
+    public async Task ListsPublicShareContentsWithoutAnImportRequest()
+    {
+        using var handler = new FixtureHandler((request, _) =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Uri uri = request.RequestUri!;
+            if (uri.AbsolutePath == "/s/1fixture")
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                    "{\"loginstate\":1,\"bdstoken\":\"fixture-token\",\"share_uk\":44,\"shareid\":64}") };
+
+            Assert.Equal("/share/list", uri.AbsolutePath);
+            if (uri.Query.Contains("root=1", StringComparison.Ordinal))
+                return Json(new { list = new[] { new { path = "/remote/docs", fs_id = 1, isdir = 1 } } });
+
+            Assert.Contains("dir=%2Fremote%2Fdocs", uri.Query);
+            return Json(new { list = new[] { new { path = "/remote/docs/file", fs_id = 2, isdir = 0, size = 42 } } });
+        });
+        using var client = Client(handler);
+
+        ShareInventory result = await client.InspectShareAsync("https://pan.baidu.com/s/1fixture", null, TestContext.Current.CancellationToken);
+
+        Assert.True(result.Complete);
+        Assert.Equal(2, result.Requests);
+        Assert.Equal(["/docs", "/docs/file"], result.Files.Select(file => file.Path));
+        Assert.Equal(42, result.Files[1].Size);
+    }
+
+    [Fact]
     public async Task RefreshesAnExpiredDirectLinkBeforeRetrying()
     {
         int discoveries = 0;
