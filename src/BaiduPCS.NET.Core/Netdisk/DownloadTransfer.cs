@@ -138,7 +138,7 @@ public sealed partial class NetdiskClient
         int rangeCount = checked((int)((entry.Size - 1) / rangeSize + 1));
         var identity = new DownloadIdentity(1, _account.Id, entry.Id, entry.Path, entry.Size, entry.Modified, entry.Md5, rangeSize);
         var completed = new bool[rangeCount];
-        if (file is not null && file.Length == entry.Size && await ReadCheckpointAsync(statePath!, token) is { } previous
+        if (file is not null && file.Length == entry.Size && await ReadCheckpointAsync<DownloadCheckpoint>(statePath!, token) is { } previous
             && previous.Identity == identity && previous.Completed is { Length: var savedCount } && savedCount == rangeCount)
             completed = previous.Completed;
 
@@ -251,20 +251,22 @@ public sealed partial class NetdiskClient
             {
                 return await work(token);
             }
-            catch (Exception error) when (attempt < retries && !token.IsCancellationRequested && error is
-                HttpRequestException or EndOfStreamException or InvalidDataException or OperationCanceledException)
+            catch (Exception error) when (attempt < retries && !token.IsCancellationRequested && (error is
+                HttpRequestException or EndOfStreamException or InvalidDataException or OperationCanceledException
+                || error is BaiduApiException { Code: 0, Status: HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests
+                    or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout }))
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(250 * Math.Min(attempt + 1, 8)), token);
             }
         }
     }
 
-    private static async Task<DownloadCheckpoint?> ReadCheckpointAsync(string path, CancellationToken token)
+    private static async Task<T?> ReadCheckpointAsync<T>(string path, CancellationToken token) where T : class
     {
         try
         {
             await using FileStream checkpoint = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<DownloadCheckpoint>(checkpoint, cancellationToken: token);
+            return await JsonSerializer.DeserializeAsync<T>(checkpoint, cancellationToken: token);
         }
         catch (Exception error) when (error is FileNotFoundException or JsonException)
         {
@@ -272,7 +274,7 @@ public sealed partial class NetdiskClient
         }
     }
 
-    private static async Task WriteCheckpointAsync(string path, DownloadCheckpoint checkpoint)
+    private static async Task WriteCheckpointAsync<T>(string path, T checkpoint)
     {
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try

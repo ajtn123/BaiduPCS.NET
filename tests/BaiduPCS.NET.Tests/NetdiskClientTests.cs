@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using BaiduPCS.Configuration;
 using BaiduPCS.Netdisk;
 using BaiduPCS.Transfers;
@@ -9,6 +10,69 @@ namespace BaiduPCS.Tests;
 
 public sealed class NetdiskClientTests
 {
+    [Fact]
+    public async Task ResumesMultipartUploadAndFinalizesInPartOrder()
+    {
+        const int firstSize = 4 * 1024 * 1024;
+        byte[] bytes = new byte[firstSize + 2];
+        bytes[^1] = 5;
+        string firstHash = Convert.ToHexStringLower(MD5.HashData(bytes.AsSpan(0, firstSize)));
+        string lastHash = Convert.ToHexStringLower(MD5.HashData(bytes.AsSpan(firstSize)));
+        string directory = Directory.CreateTempSubdirectory("baidupcs-upload-test-").FullName;
+        try
+        {
+            string source = Path.Combine(directory, "source");
+            await File.WriteAllBytesAsync(source, bytes, TestContext.Current.CancellationToken);
+            bool interrupted = true;
+            int precreates = 0;
+            var confirmed = new List<int>();
+            using var handler = new FixtureHandler(async (request, _, token) =>
+            {
+                Uri uri = request.RequestUri!;
+                if (uri.Query.Contains("method=meta", StringComparison.Ordinal))
+                    return Json(new { error_code = 31066 });
+                if (uri.AbsolutePath == "/api/precreate")
+                {
+                    precreates++;
+                    return Json(new { return_type = 1, uploadid = "fixture-session" });
+                }
+
+                if (uri.AbsolutePath == "/api/create")
+                {
+                    string parameters = Uri.UnescapeDataString(await request.Content!.ReadAsStringAsync(token));
+                    Assert.Contains($"block_list=[\"{firstHash}\",\"{lastHash}\"]", parameters);
+                    return Json(new { errno = 0 });
+                }
+
+                Assert.Contains("uploadid=fixture-session", uri.Query);
+                int part = uri.Query.Contains("partseq=0", StringComparison.Ordinal) ? 0 : 1;
+                if (interrupted && part == 1)
+                    return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+
+                var multipart = Assert.IsType<MultipartFormDataContent>(request.Content);
+                byte[] content = await Assert.Single(multipart).ReadAsByteArrayAsync(token);
+                Assert.Equal(part == 0 ? firstSize : 2, content.Length);
+                confirmed.Add(part);
+                return Json(new { md5 = part == 0 ? firstHash : lastHash });
+            });
+            using var client = new NetdiskClient(new ClientSettings { FixedPcsHost = true },
+                new Account { Id = 1, Name = "Fixture" }, handler);
+            var options = new UploadOptions { Parallel = 1, Retries = 0, SkipRapidCheck = true };
+            await Assert.ThrowsAsync<BaiduApiException>(() => client.UploadAsync(source, "/file", directory, options,
+                cancellationToken: TestContext.Current.CancellationToken));
+            interrupted = false;
+
+            Assert.Equal(UploadResult.Uploaded, await client.UploadAsync(source, "/file", directory, options,
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Equal(1, precreates);
+            Assert.Equal([0, 1], confirmed);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task ResumesCompletedRangesAfterARequestFails()
     {
@@ -207,11 +271,14 @@ public sealed class NetdiskClientTests
 
     private static object Entry(long id, string path) => new { fs_id = id, path, server_filename = RemotePath.Name(path) };
 
-    private sealed class FixtureHandler(Func<HttpRequestMessage, int, HttpResponseMessage> response) : HttpMessageHandler
+    private sealed class FixtureHandler(Func<HttpRequestMessage, int, CancellationToken, Task<HttpResponseMessage>> response) : HttpMessageHandler
     {
+        public FixtureHandler(Func<HttpRequestMessage, int, HttpResponseMessage> respond)
+            : this((request, count, _) => Task.FromResult(respond(request, count))) { }
+
         public int Count { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(response(request, ++Count));
+            response(request, ++Count, cancellationToken);
     }
 }
