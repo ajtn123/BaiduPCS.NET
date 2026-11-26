@@ -1,1 +1,6 @@
 local/
+[Bb]in/
+[Oo]bj/
+TestResults/
+artifacts/
+.vs/
