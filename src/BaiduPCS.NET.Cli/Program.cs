@@ -97,6 +97,7 @@ internal static class Program
             config.AddCommand<DownloadCommand>("download").WithDescription("Download files and directory trees from Baidu Netdisk.");
             config.AddCommand<UploadCommand>("upload").WithDescription("Upload local files or directory trees to a remote directory.");
             config.AddCommand<ChecksumCommand>("checksum").WithDescription("Calculate Baidu file checksums and checksum links.");
+            config.AddCommand<ExportCommand>("export").WithDescription("Export remote file checksums and directory structure.");
             config.AddBranch("offline", branch =>
             {
                 branch.SetDescription("Manage server-side download tasks.");

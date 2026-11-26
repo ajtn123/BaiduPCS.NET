@@ -10,6 +10,36 @@ namespace BaiduPCS.Tests;
 
 public sealed class NetdiskClientTests
 {
+    [Fact]
+    public async Task ExportUsesAByteRangeForTheSliceAndReadsFullFileChecksumsFromHeaders()
+    {
+        byte[] prefix = new byte[FileChecksums.SliceLength];
+        const string md5 = "a563415c3e27bf849990d79e71b9bfdc";
+        const long fileSize = FileChecksums.SliceLength + 12;
+        using var handler = new FixtureHandler((request, count) =>
+        {
+            if (count == 1)
+                return Json(new { urls = new[] { new { url = "https://example.com/file", encrypt = 0 } } });
+
+            Assert.Equal(FileChecksums.SliceLength - 1, Assert.Single(request.Headers.Range!.Ranges).To);
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new ByteArrayContent(prefix) };
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, prefix.Length - 1, fileSize);
+            Assert.True(response.Content.Headers.TryAddWithoutValidation("Content-MD5", md5));
+            response.Headers.TryAddWithoutValidation("x-bs-meta-crc32", "1234567");
+            return response;
+        });
+        using var client = new NetdiskClient(new ClientSettings(), new Account
+        {
+            Id = 1, Name = "Fixture", Credentials = new Credentials { Bduss = "fixture" },
+        }, handler);
+        var entry = new RemoteEntry(2, 1, "/file", "file", false, fileSize, DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, "", []);
+
+        FileChecksums result = await client.GetExportChecksumsAsync(entry, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(new FileChecksums(fileSize, md5, Convert.ToHexStringLower(MD5.HashData(prefix)), 1234567), result);
+    }
+
     [Theory]
     [InlineData("pan.baidu.com/s/1example AbCd", null)]
     [InlineData("https://pan.baidu.com/share/init?surl=example&pwd=abcd", "abcd")]
