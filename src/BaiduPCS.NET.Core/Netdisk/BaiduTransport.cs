@@ -24,11 +24,17 @@ internal sealed class BaiduTransport : IDisposable
     private readonly ClientSettings _settings;
     private string Scheme => _settings.UseHttps ? "https" : "http";
 
-    internal BaiduTransport(ClientSettings settings, Credentials credentials, HttpMessageHandler? handler = null)
+    internal BaiduTransport(ClientSettings settings, Credentials credentials, HttpMessageHandler? handler = null,
+        bool allowRedirects = true)
     {
         _settings = settings;
-        _http = new HttpClient(handler ?? CreateHandler(settings, credentials)) { Timeout = TimeSpan.FromSeconds(100) };
+        _http = new HttpClient(handler ?? CreateHandler(settings, credentials, Cookies, allowRedirects))
+        {
+            Timeout = TimeSpan.FromSeconds(100),
+        };
     }
+
+    internal CookieContainer Cookies { get; } = new();
 
     internal Uri Pcs(string resource, string method, params (string Key, string Value)[] query) =>
         Build(Scheme, string.IsNullOrWhiteSpace(_settings.PcsHost) ? PcsHost : _settings.PcsHost,
@@ -132,9 +138,9 @@ internal sealed class BaiduTransport : IDisposable
         return content;
     }
 
-    private static SocketsHttpHandler CreateHandler(ClientSettings settings, Credentials credentials)
+    private static SocketsHttpHandler CreateHandler(ClientSettings settings, Credentials credentials, CookieContainer cookies,
+        bool allowRedirects)
     {
-        var cookies = new CookieContainer();
         var combined = ParseCookies(credentials.Cookies);
         AddCookie(combined, "BDUSS", credentials.Bduss);
         AddCookie(combined, "PTOKEN", credentials.Ptoken);
@@ -154,6 +160,7 @@ internal sealed class BaiduTransport : IDisposable
         var handler = new SocketsHttpHandler
         {
             CookieContainer = cookies,
+            AllowAutoRedirect = allowRedirects,
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli,
             MaxAutomaticRedirections = 10,
             ConnectTimeout = TimeSpan.FromSeconds(30),
