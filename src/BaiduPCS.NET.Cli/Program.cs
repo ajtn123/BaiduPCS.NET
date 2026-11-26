@@ -94,6 +94,7 @@ internal static class Program
             config.AddCommand<MoveFilesCommand>("move").WithDescription("Move files or directories on the drive.");
             config.AddCommand<RenameFileCommand>("rename").WithDescription("Rename a file or directory within its parent.");
             config.AddCommand<DownloadLinksCommand>("download-links").WithDescription("Resolve direct or Pan web download links.");
+            config.AddCommand<DownloadCommand>("download").WithDescription("Download files and directory trees from Baidu Netdisk.");
             config.AddCommand<ChecksumCommand>("checksum").WithDescription("Calculate Baidu file checksums and checksum links.");
         });
         return app.RunAsync(args, cancellationToken);

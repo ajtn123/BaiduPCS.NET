@@ -1,12 +1,80 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using BaiduPCS.Configuration;
 using BaiduPCS.Netdisk;
+using BaiduPCS.Transfers;
 
 namespace BaiduPCS.Tests;
 
 public sealed class NetdiskClientTests
 {
+    [Fact]
+    public async Task ResumesCompletedRangesAfterARequestFails()
+    {
+        const int firstRange = 8 * 1024 * 1024;
+        const int length = firstRange + 3;
+        string directory = Directory.CreateTempSubdirectory("baidupcs-test-").FullName;
+        try
+        {
+            bool interrupted = true;
+            var ranges = new List<(long From, long To)>();
+            using var handler = new FixtureHandler((request, _) =>
+            {
+                RangeItemHeaderValue range = Assert.Single(request.Headers.Range!.Ranges);
+                long from = range.From!.Value;
+                long to = range.To!.Value;
+                ranges.Add((from, to));
+                if (from == firstRange && interrupted)
+                    return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+
+                byte[] bytes = new byte[checked((int)(to - from + 1))];
+                Array.Fill(bytes, (byte)(from == firstRange ? 8 : 3));
+                var response = new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new ByteArrayContent(bytes) };
+                response.Content.Headers.ContentRange = new ContentRangeHeaderValue(from, to, length);
+                return response;
+            });
+            using var client = Client(handler);
+            string destination = Path.Combine(directory, "result");
+            var entry = new RemoteEntry(2, 1, "/result", "result", false, length, DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch, "", []);
+            var options = new DownloadOptions { Mode = DownloadMode.Pcs, Retries = 0 };
+
+            await Assert.ThrowsAsync<HttpRequestException>(() => client.DownloadAsync(entry, destination, options,
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(destination));
+            interrupted = false;
+            ranges.Clear();
+            Assert.True(await client.DownloadAsync(entry, destination, options, cancellationToken: TestContext.Current.CancellationToken));
+
+            Assert.Equal([(0L, 0L), (firstRange, length - 1L)], ranges);
+            byte[] contents = await File.ReadAllBytesAsync(destination, TestContext.Current.CancellationToken);
+            Assert.Equal(length, contents.Length);
+            Assert.Equal(3, contents[firstRange - 1]);
+            Assert.Equal(8, contents[firstRange]);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task TestDownloadReadsTheStreamWithoutCreatingOutput()
+    {
+        using var handler = new FixtureHandler((_, _) => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent([1, 2, 3]),
+        });
+        using var client = Client(handler);
+        var entry = new RemoteEntry(2, 1, "/file", "file", false, 3, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "", []);
+        string target = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "file");
+        Assert.True(await client.DownloadAsync(entry, target, new DownloadOptions { TestOnly = true, Mode = DownloadMode.Stream },
+            cancellationToken: TestContext.Current.CancellationToken));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(target)));
+        Assert.Equal(2, handler.Count);
+    }
+
     [Fact]
     public async Task DirectDownloadUsesPanAppIdAndKeepsOnlyUsableLinks()
     {

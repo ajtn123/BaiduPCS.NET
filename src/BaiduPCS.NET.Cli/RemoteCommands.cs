@@ -12,12 +12,18 @@ internal abstract class RemoteCommand<TSettings> : ProfileCommand<TSettings> whe
 {
     protected async Task<(Account Account, NetdiskClient Client)> OpenAsync(TSettings settings, CancellationToken token)
     {
+        var (profile, client) = await OpenProfileAsync(settings, token);
+        return (profile.RequireAccount(), client);
+    }
+
+    protected async Task<(Profile Profile, NetdiskClient Client)> OpenProfileAsync(TSettings settings, CancellationToken token)
+    {
         Profile profile = await Store.ReadAsync(token);
         Account account = profile.RequireAccount();
         if (settings.Verbose || Environment.GetEnvironmentVariable(ProfileStore.VerboseVariable) == "1")
             Console.Error.WriteLine($"Baidu API operation: {GetType().Name}");
 
-        return (account, new NetdiskClient(profile.Settings, account));
+        return (profile, new NetdiskClient(profile.Settings, account));
     }
 
     protected static async Task<string[]> ExpandAsync(NetdiskClient client, Account account, IEnumerable<string> patterns,

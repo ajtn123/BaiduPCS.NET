@@ -1,0 +1,140 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using BaiduPCS.Netdisk;
+using BaiduPCS.Transfers;
+using Spectre.Console;
+using Spectre.Console.Cli;
+
+namespace BaiduPCS.Cli;
+
+internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
+{
+    public sealed class Settings : RemotePaths
+    {
+        [CommandOption("--mode <MODE>")] public DownloadMode Mode { get; init; }
+        [CommandOption("--link-index <INDEX>")] public int LinkIndex { get; init; }
+        [CommandOption("--test")] public bool Test { get; init; }
+        [CommandOption("--overwrite")] public bool Overwrite { get; init; }
+        [CommandOption("--worker-status")] public bool WorkerStatus { get; init; }
+        [CommandOption("--output-directory <PATH>")] public string? OutputDirectory { get; init; }
+        [CommandOption("--full-path")] public bool FullPath { get; init; }
+        [CommandOption("--executable")] public bool Executable { get; init; }
+        [CommandOption("--parallel <WORKERS>")] public int? Parallel { get; init; }
+        [CommandOption("--file-concurrency <FILES>")] public int? FileConcurrency { get; init; }
+        [CommandOption("--retries <COUNT>")] public int Retries { get; init; } = 3;
+        [CommandOption("--verify")] public bool Verify { get; init; }
+        [CommandOption("--skip-verification")] public bool SkipVerification { get; init; }
+        [CommandOption("--preserve-mtime")] public bool PreserveMtime { get; init; }
+
+        public override ValidationResult Validate() => Parallel is < 1 || FileConcurrency is < 1 || LinkIndex < 0 || Retries < 0
+            ? ValidationResult.Error("Concurrency must be positive, and link index and retries cannot be negative.")
+            : Verify && SkipVerification ? ValidationResult.Error("Choose either --verify or --skip-verification.") : ValidationResult.Success();
+    }
+
+    public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
+    {
+        var (profile, client) = await OpenProfileAsync(settings, cancellationToken);
+        using (client)
+        {
+            var account = profile.RequireAccount();
+            string[] sources = await ExpandAsync(client, account, settings.Paths, cancellationToken);
+            string outputRoot = Path.GetFullPath(settings.OutputDirectory ?? Path.Combine(profile.Settings.SaveDirectory,
+                DownloadDestination.SafeName($"{account.Id}_{account.Name}")));
+            IReadOnlyCollection<DownloadItem> items = await PlanDownloadsAsync(client, sources, outputRoot, settings.FullPath, cancellationToken);
+            if (!settings.Test)
+            {
+                foreach (DownloadItem directory in items.Where(item => item.Entry.IsDirectory))
+                    DownloadDestination.CreateSafeDirectory(outputRoot, directory.Target);
+            }
+
+            DownloadItem[] files = items.Where(item => !item.Entry.IsDirectory).OrderBy(item => item.Entry.Size).ToArray();
+            int concurrency = Math.Clamp(settings.FileConcurrency ?? profile.Settings.DownloadConcurrency, 1, Math.Max(1, files.Length));
+            var options = new DownloadOptions
+            {
+                Mode = settings.Mode,
+                LinkIndex = settings.LinkIndex,
+                Parallel = Math.Max(1, (settings.Parallel ?? profile.Settings.DownloadParallel) / concurrency),
+                Retries = settings.Retries,
+                TestOnly = settings.Test,
+                Overwrite = settings.Overwrite,
+                Verify = settings.Verify || !settings.SkipVerification && profile.Settings.VerifyDownloads,
+                PreserveModifiedTime = settings.PreserveMtime,
+                Executable = settings.Executable,
+            };
+            var failures = new ConcurrentQueue<string>();
+            var timer = Stopwatch.StartNew();
+            long totalBytes = 0;
+            await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = cancellationToken },
+                async (item, token) =>
+                {
+                    try
+                    {
+                        if (!settings.Test)
+                            DownloadDestination.CreateSafeDirectory(outputRoot, Path.GetDirectoryName(item.Target)!);
+
+                        bool processed = await client.DownloadAsync(item.Entry, item.Target, options,
+                            settings.WorkerStatus ? progress => Console.Error.WriteLine(
+                                $"{item.Entry.Path} [{progress.Range?.ToString() ?? "stream"}] {progress.CompletedBytes}/{progress.TotalBytes} bytes") : null, token);
+                        if (processed)
+                            Interlocked.Add(ref totalBytes, item.Entry.Size);
+
+                        Console.WriteLine($"{(processed ? settings.Test ? "Tested" : "Downloaded" : "Skipped")} {item.Entry.Path}");
+                    }
+                    catch (Exception error) when (error is IOException or InvalidDataException or HttpRequestException or BaiduApiException
+                        or UnauthorizedAccessException || error is OperationCanceledException && !token.IsCancellationRequested)
+                    {
+                        failures.Enqueue(item.Entry.Path);
+                        string message = error is BaiduApiException or InvalidDataException ? error.Message : error.GetType().Name;
+                        Console.Error.WriteLine($"{item.Entry.Path}: {message}");
+                    }
+                });
+
+            Console.WriteLine($"Processed {totalBytes} bytes in {timer.Elapsed.TotalSeconds:F1}s.");
+            if (!failures.IsEmpty)
+                Console.Error.WriteLine($"Failed downloads ({failures.Count}): {string.Join(", ", failures)}");
+
+            return failures.IsEmpty ? 0 : 1;
+        }
+    }
+
+    private static async Task<IReadOnlyCollection<DownloadItem>> PlanDownloadsAsync(NetdiskClient client, string[] sources,
+        string outputRoot, bool fullPath, CancellationToken token)
+    {
+        var targets = new Dictionary<string, DownloadItem>(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        foreach (string source in sources)
+        {
+            RemoteEntry entry = source == "/"
+                ? new(0, 0, "/", "", true, 0, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "", [])
+                : await client.FindAsync(source, token) ?? throw new InvalidOperationException($"No remote file or directory at {source}.");
+
+            var queue = new Queue<RemoteEntry>();
+            queue.Enqueue(entry);
+            string relativeRoot = fullPath ? "/" : RemotePath.Parent(entry.Path);
+            int prefixLength = relativeRoot == "/" ? 1 : relativeRoot.Length + 1;
+            while (queue.TryDequeue(out RemoteEntry? current))
+            {
+                string target = DownloadDestination.Resolve(outputRoot, current.Path[prefixLength..]);
+                if (targets.TryGetValue(target, out DownloadItem? previous) && previous.Entry.Path != current.Path)
+                    throw new ArgumentException("Multiple remote paths map to the same local download destination. Use --full-path or separate output directories.");
+
+                if (!targets.TryAdd(target, new DownloadItem(current, target)))
+                    continue;
+                if (!current.IsDirectory)
+                    continue;
+
+                await foreach (RemoteEntry child in client.ListAsync(current.Path, cancellationToken: token))
+                {
+                    if (child.Path == current.Path || RemotePath.Parent(child.Path) != current.Path)
+                        throw new InvalidDataException("Baidu returned a file outside the requested directory.");
+
+                    queue.Enqueue(child);
+                }
+            }
+        }
+
+        return targets.Values;
+    }
+
+    private sealed record DownloadItem(RemoteEntry Entry, string Target);
+}
