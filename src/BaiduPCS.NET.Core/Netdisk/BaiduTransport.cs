@@ -126,9 +126,23 @@ internal sealed class BaiduTransport : IDisposable
             agent = _settings.UserAgent;
 
         using var request = new HttpRequestMessage(method, uri) { Content = content };
+        AddCdnCookies(uri);
         request.Headers.TryAddWithoutValidation("User-Agent", agent);
         configure?.Invoke(request);
         return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+    }
+
+    private void AddCdnCookies(Uri uri)
+    {
+        if (uri.Host != "baidupcs.com" && !uri.Host.EndsWith(".baidupcs.com", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        CookieCollection accountCookies = Cookies.GetCookies(new Uri("https://pcs.baidu.com/"));
+        foreach (Cookie cookie in accountCookies)
+        {
+            if (cookie.Name is "BDUSS" or "STOKEN" or "PTOKEN" or "SBOXTKN" or "BAIDUID")
+                Cookies.Add(uri, new Cookie(cookie.Name, cookie.Value, "/") { Secure = uri.Scheme == "https" });
+        }
     }
 
     internal static MultipartFormDataContent JsonForm(object value)

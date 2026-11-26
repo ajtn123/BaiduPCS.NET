@@ -19,27 +19,45 @@ public sealed partial class NetdiskClient
     {
         if (entry.IsDirectory || entry.Size < 0 || options is { Parallel: < 1 } or { Retries: < 0 } or { LinkIndex: < 0 })
             throw new ArgumentException("Download requires a file and valid worker, retry, and link settings.");
+        EnsureBelowRoot(entry.Path);
 
         destination = Path.GetFullPath(destination);
-        string parent = Path.GetDirectoryName(destination) ?? throw new ArgumentException("A destination file is required.");
         if (!options.TestOnly && File.Exists(destination) && !options.Overwrite)
             return false;
 
-        var rate = LazyInitializer.EnsureInitialized(ref _downloadRate, () => new TransferRate(_settings.DownloadRate));
-        Uri uri = await ResolveDownloadUriAsync(entry.Path, options, cancellationToken);
-        using HttpResponseMessage probe = await WithRetriesAsync(
-            token => SendDownloadAsync(uri, options.Mode, 0, 0, token), options.Retries, cancellationToken);
-        bool ranged = probe.StatusCode == HttpStatusCode.PartialContent;
-        if (ranged)
-            ValidateRange(probe, 0, 0, entry.Size);
-        else if (!(entry.Size == 0 && probe.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable))
-        {
-            probe.EnsureSuccessStatusCode();
-            if (entry.Size == 0)
-                await CopyDownloadAsync(probe, null, 0, 0, rate, null, null, cancellationToken);
-        }
+        if (options.Mode != DownloadMode.Direct)
+            return await DownloadFromAsync(entry, destination, options, DownloadEndpoint(entry.Path, options.Mode == DownloadMode.Stream),
+                progress, cancellationToken);
 
-        probe.Dispose();
+        IReadOnlyList<Uri> addresses = await LocateDownloadAsync(entry.Path, cancellationToken);
+        int preferred = PreferredLink(addresses, options.LinkIndex);
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await DownloadFromAsync(entry, destination, options, addresses[preferred], progress, cancellationToken);
+            }
+            catch (Exception error) when (attempt < options.Retries && !cancellationToken.IsCancellationRequested
+                && (error is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                    or HttpStatusCode.NotFound or HttpStatusCode.Gone } || error is InvalidDataException && addresses.Count > 1))
+            {
+                if (preferred + 1 < addresses.Count)
+                    preferred++;
+                else
+                {
+                    addresses = await LocateDownloadAsync(entry.Path, cancellationToken);
+                    preferred = PreferredLink(addresses, options.LinkIndex);
+                }
+            }
+        }
+    }
+
+    private async Task<bool> DownloadFromAsync(RemoteEntry entry, string destination, DownloadOptions options, Uri uri,
+        Action<DownloadProgress>? progress, CancellationToken cancellationToken)
+    {
+        string parent = Path.GetDirectoryName(destination) ?? throw new ArgumentException("A destination file is required.");
+        var rate = LazyInitializer.EnsureInitialized(ref _downloadRate, () => new TransferRate(_settings.DownloadRate));
+        bool ranged = await ProbeAsync(entry.Size, uri, options, rate, cancellationToken);
 
         if (options.TestOnly)
         {
@@ -100,6 +118,8 @@ public sealed partial class NetdiskClient
                 if (!actual.Equals(entry.Md5, StringComparison.OrdinalIgnoreCase))
                 {
                     File.Delete(state);
+                    if (IsPlaceholder(entry.Size, actual))
+                        throw new InvalidOperationException("Baidu returned a restricted-file placeholder instead of the file.");
                     throw new InvalidDataException("Downloaded data does not match the Baidu checksum.");
                 }
             }
@@ -118,18 +138,48 @@ public sealed partial class NetdiskClient
         return true;
     }
 
+    private async Task<bool> ProbeAsync(long size, Uri uri, DownloadOptions options, TransferRate rate, CancellationToken token) =>
+        await WithRetriesAsync(async attemptToken =>
+        {
+            using HttpResponseMessage probe = await SendDownloadAsync(uri, options.Mode, 0, 0, attemptToken);
+            if (probe.StatusCode == HttpStatusCode.PartialContent)
+            {
+                ValidateRange(probe, 0, 0, size);
+                return true;
+            }
+
+            if (size != 0 || probe.StatusCode != HttpStatusCode.RequestedRangeNotSatisfiable)
+            {
+                probe.EnsureSuccessStatusCode();
+                if (size == 0)
+                    await CopyDownloadAsync(probe, null, 0, 0, rate, null, null, attemptToken);
+                else if (probe.Content.Headers.ContentLength is long length && length != size)
+                    throw new InvalidDataException("Baidu advertised an unexpected file size.");
+            }
+
+            return false;
+        }, options.Retries, token);
+
     private async Task<Uri> ResolveDownloadUriAsync(string path, DownloadOptions options, CancellationToken token)
     {
         if (options.Mode != DownloadMode.Direct)
             return DownloadEndpoint(path, options.Mode == DownloadMode.Stream);
 
         IReadOnlyList<Uri> addresses = await LocateDownloadAsync(path, token);
-        int preferred = Math.Min(options.LinkIndex, addresses.Count - 1);
+        return addresses[PreferredLink(addresses, options.LinkIndex)];
+    }
+
+    private static int PreferredLink(IReadOnlyList<Uri> addresses, int linkIndex)
+    {
+        int preferred = Math.Min(linkIndex, addresses.Count - 1);
         if (addresses[preferred].Host.StartsWith("nb.cache", StringComparison.OrdinalIgnoreCase) && preferred + 1 < addresses.Count)
             preferred++;
 
-        return addresses[preferred];
+        return preferred;
     }
+
+    private static bool IsPlaceholder(long size, string hash) => (size, hash) is
+        (1749504, "48bb9b0361dc9c672f3dc7b3ffcfde97") or (120, "6c1b84914588d09a6e5ec43605557457");
 
     private async Task DownloadRangesAsync(RemoteEntry entry, Uri uri, DownloadOptions options, FileStream? file,
         string? statePath, TransferRate rate, Action<DownloadProgress>? progress, CancellationToken token)
@@ -149,12 +199,14 @@ public sealed partial class NetdiskClient
             file.SetLength(entry.Size);
         }
 
-        long confirmed = 0;
+        long transferred = 0;
         for (int index = 0; index < rangeCount; index++)
         {
             if (completed[index])
-                confirmed += Math.Min(rangeSize, entry.Size - index * rangeSize);
+                transferred += Math.Min(rangeSize, entry.Size - index * rangeSize);
         }
+        if (transferred != 0)
+            progress?.Invoke(new DownloadProgress(transferred, entry.Size, null));
 
         using var stateLock = new SemaphoreSlim(1);
         var parallel = new ParallelOptions { MaxDegreeOfParallelism = options.Parallel, CancellationToken = token };
@@ -163,11 +215,19 @@ public sealed partial class NetdiskClient
             long start = index * rangeSize;
             long size = Math.Min(rangeSize, entry.Size - start);
             long end = start + size - 1;
+            long partLoaded = 0;
             await WithRetriesAsync(async workerToken =>
             {
+                Interlocked.Add(ref transferred, -partLoaded);
+                partLoaded = 0;
                 using HttpResponseMessage response = await SendDownloadAsync(uri, options.Mode, start, end, workerToken);
                 ValidateRange(response, start, end, entry.Size);
-                await CopyDownloadAsync(response, file, start, size, rate, index, null, workerToken);
+                await CopyDownloadAsync(response, file, start, size, rate, index, progress is null ? null : current =>
+                {
+                    long whole = Interlocked.Add(ref transferred, current.CompletedBytes - partLoaded);
+                    partLoaded = current.CompletedBytes;
+                    progress(new DownloadProgress(whole, entry.Size, index));
+                }, workerToken);
                 return true;
             }, options.Retries, innerToken);
 
@@ -175,14 +235,12 @@ public sealed partial class NetdiskClient
             try
             {
                 completed[index] = true;
-                confirmed += size;
                 if (file is not null)
                 {
                     RandomAccess.FlushToDisk(file.SafeFileHandle);
                     await WriteCheckpointAsync(statePath!, new DownloadCheckpoint(identity, completed));
                 }
 
-                progress?.Invoke(new DownloadProgress(confirmed, entry.Size, index));
             }
             finally
             {
@@ -252,7 +310,9 @@ public sealed partial class NetdiskClient
                 return await work(token);
             }
             catch (Exception error) when (attempt < retries && !token.IsCancellationRequested && (error is
-                HttpRequestException or EndOfStreamException or InvalidDataException or OperationCanceledException
+                HttpRequestException { StatusCode: null or HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests
+                    or HttpStatusCode.InternalServerError or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout }
+                or EndOfStreamException or InvalidDataException or OperationCanceledException
                 || error is BaiduApiException { Code: 0, Status: HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests
                     or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout }))
             {

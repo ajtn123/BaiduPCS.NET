@@ -42,7 +42,7 @@ public static class AccountIdentity
             if (TryReadId(entry, out ulong id, "uid", "user_id", "id") && (name.Length != 0 || manualName.Length != 0))
                 return new Account { Id = id, Name = name.Length == 0 ? manualName : name, Credentials = credentials };
 
-            if (manualName.Length > 0 && manualId.GetValueOrDefault() > 0)
+            if (entry.ValueKind == JsonValueKind.Object && manualName.Length > 0 && manualId.GetValueOrDefault() > 0)
                 return new Account { Id = manualId!.Value, Name = manualName, Credentials = credentials };
 
             if (manualName.Length > 0 && TryReadId(entry, out id, "uk"))

@@ -54,7 +54,7 @@ internal abstract class ToolCryptoCommand(bool decrypt) : AsyncCommand<ToolCrypt
         if (settings.KeyStdin)
             secret = await Console.In.ReadLineAsync(cancellationToken);
         else if (secret is null && !Console.IsInputRedirected && !Console.IsOutputRedirected)
-            secret = AnsiConsole.Prompt(new TextPrompt<string>("Encryption key:").Secret());
+            secret = AnsiConsole.Prompt(new TextPrompt<string>(Ui.Text("Encryption key:")).Secret());
 
         if (string.IsNullOrEmpty(secret))
             throw new ArgumentException("Supply a key with --key, --key-stdin, or the masked terminal prompt.");

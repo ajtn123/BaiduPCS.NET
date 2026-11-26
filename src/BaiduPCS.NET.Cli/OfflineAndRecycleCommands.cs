@@ -118,7 +118,7 @@ internal abstract class DeleteByIdCommand : RemoteCommand<DeleteIdSettings>
         {
             if (Console.IsInputRedirected || Console.IsOutputRedirected)
                 throw new ArgumentException("Use --yes to confirm clearing when running without a terminal.");
-            if (!AnsiConsole.Confirm(ClearPrompt, defaultValue: false))
+            if (!AnsiConsole.Confirm(Ui.Text(ClearPrompt), defaultValue: false))
                 return 0;
         }
 

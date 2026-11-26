@@ -58,9 +58,10 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
             {
                 try
                 {
+                    var report = new TransferProgressReporter(item.Target, settings.Verbose);
                     UploadResult result = await client.UploadAsync(item.File.FullName, item.Target, checkpoints, options,
-                        settings.Verbose ? progress => Console.Error.WriteLine(
-                            $"{item.Target} [part {progress.Part}] {progress.CompletedBytes}/{progress.TotalBytes} bytes") : null, token);
+                        settings.Verbose || !Console.IsErrorRedirected
+                            ? progress => report.Report(progress.CompletedBytes, progress.TotalBytes, progress.Part) : null, token);
                     if (result != UploadResult.Skipped)
                         Interlocked.Add(ref totalBytes, item.File.Length);
 

@@ -166,16 +166,21 @@ public sealed partial class NetdiskClient
     {
         UploadIdentity identity = checkpoint.Identity;
         string? host = await DiscoverUploadHostAsync(token);
-        long confirmed = Enumerable.Range(0, blocks.Length).Where(index => checkpoint.Completed[index])
+        long transferred = Enumerable.Range(0, blocks.Length).Where(index => checkpoint.Completed[index])
             .Sum(index => Math.Min(identity.BlockSize, identity.Length - (long)index * identity.BlockSize));
+        if (transferred != 0)
+            progress?.Invoke(new(transferred, identity.Length, -1));
         using var stateLock = new SemaphoreSlim(1);
         await Parallel.ForEachAsync(Enumerable.Range(0, blocks.Length).Where(index => !checkpoint.Completed[index]),
             new ParallelOptions { CancellationToken = token, MaxDegreeOfParallelism = options.Parallel }, async (index, partToken) =>
             {
                 long offset = (long)index * identity.BlockSize;
                 long count = Math.Min(identity.BlockSize, identity.Length - offset);
+                long partLoaded = 0;
                 await WithRetriesAsync(async workerToken =>
                 {
+                    Interlocked.Add(ref transferred, -partLoaded);
+                    partLoaded = 0;
                     (string, string)[] query = [("type", "tmpfile"), ("path", identity.Target), ("partseq", BaiduTransport.Format(index)),
                         ("partoffset", BaiduTransport.Format(offset)), ("uploadid", checkpoint.UploadId), ("vip", "1")];
                     Uri endpoint = _transport.Pcs("superfile2", "upload", query);
@@ -183,7 +188,12 @@ public sealed partial class NetdiskClient
                         endpoint = new UriBuilder(endpoint) { Host = host }.Uri;
 
                     using var form = new MultipartFormDataContent();
-                    form.Add(new UploadPartContent(file, offset, count, rate), "uploadedfile", "part");
+                    form.Add(new UploadPartContent(file, offset, count, rate, progress is null ? null : sent =>
+                    {
+                        long whole = Interlocked.Add(ref transferred, sent - partLoaded);
+                        partLoaded = sent;
+                        progress(new(whole, identity.Length, index));
+                    }), "uploadedfile", "part");
                     JsonElement response = await _transport.JsonAsync(HttpMethod.Post, endpoint, "upload part", false, workerToken, form);
                     if (!blocks[index].Equals(response.Text("md5"), StringComparison.OrdinalIgnoreCase))
                         throw new InvalidDataException("Baidu returned an unexpected checksum for the uploaded part.");
@@ -195,9 +205,7 @@ public sealed partial class NetdiskClient
                 try
                 {
                     checkpoint.Completed[index] = true;
-                    confirmed += count;
                     await WriteCheckpointAsync(statePath, checkpoint);
-                    progress?.Invoke(new(confirmed, identity.Length, index));
                 }
                 finally
                 {
@@ -218,7 +226,8 @@ public sealed partial class NetdiskClient
             IEnumerable<string> candidates = root.Items("servers").Select(value => value.Text("server"))
                 .Concat(root.Items("server").Where(value => value.ValueKind == JsonValueKind.String).Select(value => value.GetString()!));
             string[] hosts = candidates.Select(value => Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ? uri.Host : value)
-                .Where(host => host.EndsWith(".baidu.com", StringComparison.OrdinalIgnoreCase) && Uri.CheckHostName(host) == UriHostNameType.Dns)
+                .Where(host => (host.EndsWith(".baidu.com", StringComparison.OrdinalIgnoreCase)
+                    || host.EndsWith(".baidupcs.com", StringComparison.OrdinalIgnoreCase)) && Uri.CheckHostName(host) == UriHostNameType.Dns)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             return hosts.Length == 0 ? null : hosts[Random.Shared.Next(hosts.Length)];
         }
@@ -280,7 +289,8 @@ public sealed partial class NetdiskClient
         string Md5, int BlockSize, UploadConflict Conflict);
     private sealed record UploadCheckpoint(UploadIdentity Identity, string UploadId, bool[] Completed);
 
-    private sealed class UploadPartContent(SafeFileHandle file, long offset, long length, TransferRate rate) : HttpContent
+    private sealed class UploadPartContent(SafeFileHandle file, long offset, long length, TransferRate rate,
+        Action<long>? progress) : HttpContent
     {
         protected override bool TryComputeLength(out long size)
         {
@@ -303,6 +313,7 @@ public sealed partial class NetdiskClient
                     await rate.WaitAsync(count, token);
                     await stream.WriteAsync(buffer.AsMemory(0, count), token);
                     sent += count;
+                    progress?.Invoke(sent);
                 }
             }
             finally

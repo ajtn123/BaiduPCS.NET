@@ -72,19 +72,21 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
                         if (!settings.Test)
                             DownloadDestination.CreateSafeDirectory(outputRoot, Path.GetDirectoryName(item.Target)!);
 
+                        var report = new TransferProgressReporter(item.Entry.Path, settings.WorkerStatus);
                         bool processed = await client.DownloadAsync(item.Entry, item.Target, options,
-                            settings.WorkerStatus ? progress => Console.Error.WriteLine(
-                                $"{item.Entry.Path} [{progress.Range?.ToString() ?? "stream"}] {progress.CompletedBytes}/{progress.TotalBytes} bytes") : null, token);
+                            settings.WorkerStatus || !Console.IsErrorRedirected
+                                ? progress => report.Report(progress.CompletedBytes, progress.TotalBytes, progress.Range) : null, token);
                         if (processed)
                             Interlocked.Add(ref totalBytes, item.Entry.Size);
 
                         Console.WriteLine($"{(processed ? settings.Test ? "Tested" : "Downloaded" : "Skipped")} {item.Entry.Path}");
                     }
                     catch (Exception error) when (error is IOException or InvalidDataException or HttpRequestException or BaiduApiException
-                        or UnauthorizedAccessException || error is OperationCanceledException && !token.IsCancellationRequested)
+                        or UnauthorizedAccessException or InvalidOperationException || error is OperationCanceledException && !token.IsCancellationRequested)
                     {
                         failures.Enqueue(item.Entry.Path);
-                        string message = error is BaiduApiException or InvalidDataException ? error.Message : error.GetType().Name;
+                        string message = error is BaiduApiException or InvalidDataException or InvalidOperationException
+                            ? error.Message : error.GetType().Name;
                         Console.Error.WriteLine($"{item.Entry.Path}: {message}");
                     }
                 });

@@ -105,7 +105,7 @@ internal sealed class SwitchAccountCommand : ProfileCommand<SwitchAccountCommand
             if (Console.IsInputRedirected || Console.IsOutputRedirected)
                 throw new ArgumentException("Specify an account UID or name when running without a terminal.");
 
-            var prompt = new SelectionPrompt<Account>().Title("Select an account.")
+            var prompt = new SelectionPrompt<Account>().Title(Ui.Text("Select an account."))
                 .UseConverter(account => Markup.Escape($"{account.Name} ({account.Id})"))
                 .AddChoices(profile.Accounts);
             return AnsiConsole.Prompt(prompt);
@@ -172,7 +172,7 @@ internal sealed class SetAccessTokenCommand : ProfileCommand<SetAccessTokenComma
         if (settings.StandardInput)
             token = await Console.In.ReadLineAsync(cancellationToken);
         else if (!Console.IsInputRedirected && !Console.IsOutputRedirected)
-            token = AnsiConsole.Prompt(new TextPrompt<string>("Access token:").Secret());
+            token = AnsiConsole.Prompt(new TextPrompt<string>(Ui.Text("Access token:")).Secret());
         else
             throw new ArgumentException("Use --stdin to supply the access token without a terminal.");
 

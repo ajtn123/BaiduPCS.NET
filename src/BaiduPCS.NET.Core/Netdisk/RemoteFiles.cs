@@ -147,8 +147,8 @@ public sealed partial class NetdiskClient : IDisposable
 
     private static void EnsureBelowRoot(string path)
     {
-        if (!RemotePath.IsAbsolute(path) || path == "/")
-            throw new ArgumentException("The operation requires a path below the remote root.");
+        if (!RemotePath.IsAbsolute(path) || path == "/" || RemotePath.Resolve("/", path) != path)
+            throw new ArgumentException("The operation requires a normalized path below the remote root.");
     }
 
     private static RemoteEntry[] ReadEntries(JsonElement root)

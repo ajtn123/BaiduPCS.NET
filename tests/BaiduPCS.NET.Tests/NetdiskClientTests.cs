@@ -11,6 +11,49 @@ namespace BaiduPCS.Tests;
 public sealed class NetdiskClientTests
 {
     [Fact]
+    public async Task RefreshesAnExpiredDirectLinkBeforeRetrying()
+    {
+        int discoveries = 0;
+        using var handler = new FixtureHandler((request, _) =>
+        {
+            Uri uri = request.RequestUri!;
+            if (uri.Query.Contains("method=locatedownload", StringComparison.Ordinal))
+                return Json(new { urls = new[] { new { url = $"https://example.com/{++discoveries}", encrypt = 0 } } });
+            if (uri.AbsolutePath == "/1")
+                return new HttpResponseMessage(HttpStatusCode.Forbidden);
+
+            RangeItemHeaderValue range = Assert.Single(request.Headers.Range!.Ranges);
+            byte[] bytes = range.To == 0 ? [42] : [42, 43];
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new ByteArrayContent(bytes) };
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, range.To!.Value, 2);
+            return response;
+        });
+        using var client = new NetdiskClient(new ClientSettings(), new Account
+        {
+            Id = 1, Name = "Fixture", Credentials = new Credentials { Bduss = "fixture" },
+        }, handler);
+        var entry = new RemoteEntry(2, 1, "/file", "file", false, 2, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "", []);
+        var options = new DownloadOptions { TestOnly = true, Retries = 1 };
+
+        Assert.True(await client.DownloadAsync(entry, "unused", options, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(2, discoveries);
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/folder/..")]
+    [InlineData("//")]
+    public void RejectsRemoteRootDeletionBeforeCallingBaidu(string path)
+    {
+        using var handler = new FixtureHandler((_, _) => throw new InvalidOperationException("No request expected."));
+        using var client = Client(handler);
+
+        Assert.Throws<ArgumentException>(() => { _ = client.RemoveAsync(path, TestContext.Current.CancellationToken); });
+        Assert.Equal(0, handler.Count);
+    }
+
+    [Fact]
     public async Task ExportUsesAByteRangeForTheSliceAndReadsFullFileChecksumsFromHeaders()
     {
         byte[] prefix = new byte[FileChecksums.SliceLength];

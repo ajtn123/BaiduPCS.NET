@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <data name="Display and change client settings." xml:space="preserve"><value>查看和修改客户端设置。</value></data>
+  <data name="Display the current settings." xml:space="preserve"><value>查看当前设置。</value></data>
+  <data name="Set one or more key=value options." xml:space="preserve"><value>设置一个或多个 key=value 选项。</value></data>
+  <data name="Restore the default client settings." xml:space="preserve"><value>恢复默认客户端设置。</value></data>
+  <data name="Manage Baidu accounts." xml:space="preserve"><value>管理百度帐号。</value></data>
+  <data name="Sign in using a password or an existing Baidu session." xml:space="preserve"><value>使用密码或现有百度会话登录。</value></data>
+  <data name="Import a BaiduPCS-Go profile." xml:space="preserve"><value>导入 BaiduPCS-Go 配置。</value></data>
+  <data name="List saved accounts." xml:space="preserve"><value>列出已保存的帐号。</value></data>
+  <data name="Show the active account." xml:space="preserve"><value>查看当前帐号。</value></data>
+  <data name="Switch the active account." xml:space="preserve"><value>切换帐号。</value></data>
+  <data name="Remove the active saved account." xml:space="preserve"><value>退出并移除当前帐号。</value></data>
+  <data name="Update the active account's access token." xml:space="preserve"><value>更新当前帐号的访问令牌。</value></data>
+  <data name="Show configuration paths and environment variables." xml:space="preserve"><value>查看配置路径和环境变量。</value></data>
+  <data name="Print the active account's remote working directory." xml:space="preserve"><value>输出当前帐号的网盘工作目录。</value></data>
+  <data name="Show total, used, and free storage space." xml:space="preserve"><value>查看总容量、已用空间和剩余空间。</value></data>
+  <data name="List a remote directory." xml:space="preserve"><value>列出网盘目录。</value></data>
+  <data name="Set the active account's remote working directory." xml:space="preserve"><value>切换当前帐号的网盘工作目录。</value></data>
+  <data name="Find files by name." xml:space="preserve"><value>按名称搜索文件。</value></data>
+  <data name="Show metadata for remote paths." xml:space="preserve"><value>查看网盘路径的元信息。</value></data>
+  <data name="Expand a remote wildcard pattern." xml:space="preserve"><value>匹配网盘路径通配符。</value></data>
+  <data name="Show a remote directory tree." xml:space="preserve"><value>显示网盘目录树。</value></data>
+  <data name="Create remote directories." xml:space="preserve"><value>创建网盘目录。</value></data>
+  <data name="Remove files or directories from the drive." xml:space="preserve"><value>删除网盘文件或目录。</value></data>
+  <data name="Copy files or directories on the drive." xml:space="preserve"><value>复制网盘文件或目录。</value></data>
+  <data name="Move files or directories on the drive." xml:space="preserve"><value>移动网盘文件或目录。</value></data>
+  <data name="Rename a file or directory within its parent." xml:space="preserve"><value>在原目录中重命名文件或目录。</value></data>
+  <data name="Resolve direct or Pan web download links." xml:space="preserve"><value>获取直链或网盘网页下载链接。</value></data>
+  <data name="Download files and directory trees from Baidu Netdisk." xml:space="preserve"><value>从百度网盘下载文件或目录。</value></data>
+  <data name="Upload local files or directory trees to a remote directory." xml:space="preserve"><value>上传本地文件或目录到网盘。</value></data>
+  <data name="Calculate Baidu file checksums and checksum links." xml:space="preserve"><value>计算百度网盘文件校验值及校验链接。</value></data>
+  <data name="Export remote file checksums and directory structure." xml:space="preserve"><value>导出网盘文件的校验值和目录结构。</value></data>
+  <data name="Start the interactive shell." xml:space="preserve"><value>启动交互式命令行。</value></data>
+  <data name="Run a local executable with 'run -- EXECUTABLE ARG...'." xml:space="preserve"><value>使用 run -- EXECUTABLE ARG... 执行本地程序。</value></data>
+  <data name="Clear the terminal." xml:space="preserve"><value>清空终端。</value></data>
+  <data name="Exit the BaiduPCS.NET shell." xml:space="preserve"><value>退出 BaiduPCS.NET 交互式命令行。</value></data>
+  <data name="Manage server-side download tasks." xml:space="preserve"><value>管理离线下载任务。</value></data>
+  <data name="Submit URLs for Baidu to download." xml:space="preserve"><value>提交资源地址以进行离线下载。</value></data>
+  <data name="Show specific offline tasks." xml:space="preserve"><value>查询指定的离线下载任务。</value></data>
+  <data name="List offline tasks." xml:space="preserve"><value>列出离线下载任务。</value></data>
+  <data name="Cancel running offline tasks." xml:space="preserve"><value>取消进行中的离线下载任务。</value></data>
+  <data name="Delete offline task records." xml:space="preserve"><value>删除离线下载记录。</value></data>
+  <data name="Manage the drive's recycle bin." xml:space="preserve"><value>管理网盘回收站。</value></data>
+  <data name="List deleted files." xml:space="preserve"><value>列出回收站中的文件。</value></data>
+  <data name="Restore files from the recycle bin." xml:space="preserve"><value>还原回收站中的文件。</value></data>
+  <data name="Permanently delete recycle-bin files." xml:space="preserve"><value>永久删除回收站中的文件。</value></data>
+  <data name="Create, manage, and import Baidu shares." xml:space="preserve"><value>创建、管理和转存百度网盘分享。</value></data>
+  <data name="Create a protected share for remote paths." xml:space="preserve"><value>创建带提取码的网盘分享。</value></data>
+  <data name="List the active account's shares." xml:space="preserve"><value>列出当前帐号的分享。</value></data>
+  <data name="Cancel shares by ID." xml:space="preserve"><value>按 ID 取消分享。</value></data>
+  <data name="Save shared files to the current remote directory." xml:space="preserve"><value>将分享文件转存到当前网盘目录。</value></data>
+  <data name="Run local utilities." xml:space="preserve"><value>使用本地工具。</value></data>
+  <data name="Show the current time in Beijing." xml:space="preserve"><value>查看当前北京时间。</value></data>
+  <data name="Show local and public IP addresses." xml:space="preserve"><value>查看本地和公网 IP 地址。</value></data>
+  <data name="Encrypt local files in the legacy format." xml:space="preserve"><value>以兼容旧版本的格式加密本地文件。</value></data>
+  <data name="Decrypt legacy encrypted files." xml:space="preserve"><value>解密使用旧格式加密的文件。</value></data>
+  <data name="Check for and install stable releases." xml:space="preserve"><value>检查并安装稳定版。</value></data>
+  <data name="Check the latest stable release." xml:space="preserve"><value>检查最新稳定版。</value></data>
+  <data name="Install a newer stable release." xml:space="preserve"><value>安装较新的稳定版。</value></data>
+  <data name="Invalid command or arguments. Use --help for usage." xml:space="preserve"><value>命令或参数无效。请使用 --help 查看用法。</value></data>
+  <data name="Invalid value or number out of range." xml:space="preserve"><value>输入值无效或数字超出范围。</value></data>
+  <data name="Baidu username:" xml:space="preserve"><value>百度帐号：</value></data>
+  <data name="Baidu password:" xml:space="preserve"><value>百度密码：</value></data>
+  <data name="Image verification code:" xml:space="preserve"><value>图片验证码：</value></data>
+  <data name="Verification code:" xml:space="preserve"><value>验证码：</value></data>
+  <data name="Choose where Baidu should send the verification code." xml:space="preserve"><value>请选择接收百度验证码的方式。</value></data>
+  <data name="Phone" xml:space="preserve"><value>手机</value></data>
+  <data name="Email" xml:space="preserve"><value>邮箱</value></data>
+  <data name="Baidu did not accept the previous verification code." xml:space="preserve"><value>百度未接受上一次输入的验证码。</value></data>
+  <data name="Select an account." xml:space="preserve"><value>请选择帐号。</value></data>
+  <data name="Access token:" xml:space="preserve"><value>访问令牌：</value></data>
+  <data name="Encryption key:" xml:space="preserve"><value>加密密钥：</value></data>
+  <data name="Clear all offline task records?" xml:space="preserve"><value>清空所有离线下载记录吗？</value></data>
+  <data name="Permanently delete everything in the recycle bin?" xml:space="preserve"><value>永久删除回收站中的所有内容吗？</value></data>
+</root>

@@ -87,7 +87,7 @@ internal sealed class LoginCommand : ProfileCommand<LoginCommand.Settings>
     private static string Prompt(string label, bool secret = false)
     {
         RequireInteractive();
-        var prompt = new TextPrompt<string>(label);
+        var prompt = new TextPrompt<string>(Ui.Text(label));
         if (secret)
             prompt.Secret();
         return AnsiConsole.Prompt(prompt);
@@ -128,8 +128,8 @@ internal sealed class LoginCommand : ProfileCommand<LoginCommand.Settings>
             VerificationChannel[] options = phone.Length > 0 && email.Length == 0 ? [VerificationChannel.Mobile]
                 : email.Length > 0 && phone.Length == 0 ? [VerificationChannel.Email]
                 : [VerificationChannel.Mobile, VerificationChannel.Email];
-            var prompt = new SelectionPrompt<VerificationChannel>().Title("Choose where Baidu should send the verification code.")
-                .AddChoices(options).UseConverter(channel => channel == VerificationChannel.Mobile ? "Phone" : "Email");
+            var prompt = new SelectionPrompt<VerificationChannel>().Title(Ui.Text("Choose where Baidu should send the verification code."))
+                .AddChoices(options).UseConverter(channel => Ui.Text(channel == VerificationChannel.Mobile ? "Phone" : "Email"));
             return ValueTask.FromResult(AnsiConsole.Prompt(prompt));
         }
 
@@ -137,7 +137,7 @@ internal sealed class LoginCommand : ProfileCommand<LoginCommand.Settings>
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (retry)
-                Console.Error.WriteLine("Baidu did not accept the previous verification code.");
+                Console.Error.WriteLine(Ui.Text("Baidu did not accept the previous verification code."));
             return ValueTask.FromResult(Prompt("Verification code:", secret: true));
         }
     }
