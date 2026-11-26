@@ -128,6 +128,14 @@ internal static class Program
                 completions.Register<CancelShareCommand>(branch, "share", "cancel").WithDescription("Cancel shares by ID.");
                 completions.Register<ImportShareCommand>(branch, "share", "import").WithDescription("Save shared files to the current remote directory.");
             });
+            config.AddBranch("tool", branch =>
+            {
+                branch.SetDescription("Run local utilities.");
+                completions.Register<BeijingTimeCommand>(branch, "tool", "time").WithDescription("Show the current time in Beijing.");
+                completions.Register<IpCommand>(branch, "tool", "ip").WithDescription("Show local and public IP addresses.");
+                completions.Register<EncryptCommand>(branch, "tool", "encrypt").WithDescription("Encrypt local files in the legacy format.");
+                completions.Register<DecryptCommand>(branch, "tool", "decrypt").WithDescription("Decrypt legacy encrypted files.");
+            });
         });
         return app.RunAsync(args, cancellationToken);
     }

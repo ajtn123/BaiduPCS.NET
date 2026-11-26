@@ -40,7 +40,7 @@ public sealed record FileChecksums(long Length, string Md5, string SliceMd5, uin
         }
     }
 
-    private static uint AppendCrc32(uint crc, ReadOnlySpan<byte> bytes)
+    internal static uint AppendCrc32(uint crc, ReadOnlySpan<byte> bytes)
     {
         foreach (byte value in bytes)
             crc = Crc32Table[(crc ^ value) & 255] ^ (crc >> 8);
