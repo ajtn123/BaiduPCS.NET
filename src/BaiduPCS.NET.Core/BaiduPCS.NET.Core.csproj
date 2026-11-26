@@ -3,4 +3,7 @@
     <RootNamespace>BaiduPCS</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="BaiduPCS.NET.Tests" />
+  </ItemGroup>
 </Project>

@@ -3,4 +3,7 @@
     <Project Path="src/BaiduPCS.NET.Cli/BaiduPCS.NET.Cli.csproj" />
     <Project Path="src/BaiduPCS.NET.Core/BaiduPCS.NET.Core.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BaiduPCS.NET.Tests/BaiduPCS.NET.Tests.csproj" />
+  </Folder>
 </Solution>
