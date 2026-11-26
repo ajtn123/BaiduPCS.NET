@@ -61,6 +61,8 @@ Baidu can change or retire endpoints and restrict operations by account. Passwor
 
 See [Architecture and API design](docs/architecture.md) for the implementation and verification details.
 
+Maintainers can find the CI and NuGet publishing setup in the [release guide](docs/release.md).
+
 ## License
 
 Original BaiduPCS.NET work uses the MIT license. The notices identify the BaiduPCS-Go contributors and Apache-licensed material, and link to the issue and pull request review. [MIT license](LICENSE), [Third-party notices](THIRD-PARTY-NOTICES.md)
