@@ -49,11 +49,12 @@ internal sealed class BaiduTransport : IDisposable
     internal static string Format(long number) => number.ToString(CultureInfo.InvariantCulture);
 
     internal async Task<JsonElement> JsonAsync(HttpMethod method, Uri uri, string operation, bool pan,
-        CancellationToken cancellationToken, HttpContent? content = null)
+        CancellationToken cancellationToken, HttpContent? content = null, bool retryRead = true,
+        Action<HttpRequestMessage>? configure = null)
     {
-        using HttpResponseMessage response = method == HttpMethod.Get && content is null
+        using HttpResponseMessage response = retryRead && method == HttpMethod.Get && content is null && configure is null
             ? await GetWithRetryAsync(uri, pan, cancellationToken)
-            : await SendAsync(method, uri, pan, cancellationToken, content);
+            : await SendAsync(method, uri, pan, cancellationToken, content, configure);
         JsonElement root;
         try
         {

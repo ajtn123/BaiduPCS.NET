@@ -97,6 +97,30 @@ internal static class Program
             config.AddCommand<DownloadCommand>("download").WithDescription("Download files and directory trees from Baidu Netdisk.");
             config.AddCommand<UploadCommand>("upload").WithDescription("Upload local files or directory trees to a remote directory.");
             config.AddCommand<ChecksumCommand>("checksum").WithDescription("Calculate Baidu file checksums and checksum links.");
+            config.AddBranch("offline", branch =>
+            {
+                branch.SetDescription("Manage server-side download tasks.");
+                branch.AddCommand<AddOfflineCommand>("add").WithDescription("Submit URLs for Baidu to download.");
+                branch.AddCommand<QueryOfflineCommand>("query").WithDescription("Show specific offline tasks.");
+                branch.AddCommand<ListOfflineCommand>("list").WithDescription("List offline tasks.");
+                branch.AddCommand<CancelOfflineCommand>("cancel").WithDescription("Cancel running offline tasks.");
+                branch.AddCommand<DeleteOfflineCommand>("delete").WithDescription("Delete offline task records.");
+            });
+            config.AddBranch("recycle", branch =>
+            {
+                branch.SetDescription("Manage the drive's recycle bin.");
+                branch.AddCommand<ListRecycleCommand>("list").WithDescription("List deleted files.");
+                branch.AddCommand<RestoreRecycleCommand>("restore").WithDescription("Restore files from the recycle bin.");
+                branch.AddCommand<DeleteRecycleCommand>("delete").WithDescription("Permanently delete recycle-bin files.");
+            });
+            config.AddBranch("share", branch =>
+            {
+                branch.SetDescription("Create, manage, and import Baidu shares.");
+                branch.AddCommand<CreateShareCommand>("create").WithDescription("Create a protected share for remote paths.");
+                branch.AddCommand<ListSharesCommand>("list").WithDescription("List the active account's shares.");
+                branch.AddCommand<CancelShareCommand>("cancel").WithDescription("Cancel shares by ID.");
+                branch.AddCommand<ImportShareCommand>("import").WithDescription("Save shared files to the current remote directory.");
+            });
         });
         return app.RunAsync(args, cancellationToken);
     }

@@ -10,6 +10,50 @@ namespace BaiduPCS.Tests;
 
 public sealed class NetdiskClientTests
 {
+    [Theory]
+    [InlineData("pan.baidu.com/s/1example AbCd", null)]
+    [InlineData("https://pan.baidu.com/share/init?surl=example&pwd=abcd", "abcd")]
+    [InlineData("通过网盘分享的文件 链接：https://pan.baidu.com/s/1example 提取码：1234", "1234")]
+    public void ParsesOldNewAndPastedShareLinks(string text, string? expectedCode)
+    {
+        Assert.Equal(("1example", expectedCode), NetdiskClient.ParseShare(text));
+    }
+
+    [Fact]
+    public async Task RecycleClearDoesNotRetryTheMutationSentAsGet()
+    {
+        using var handler = new FixtureHandler((request, _) =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Contains("type=recycle", request.RequestUri!.Query);
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        });
+        using var client = Client(handler);
+
+        await Assert.ThrowsAsync<BaiduApiException>(() => client.ClearRecycleBinAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, handler.Count);
+    }
+
+    [Fact]
+    public async Task OfflineQueryReportsMissingIdsAndDecodesStringNumerics()
+    {
+        using var handler = new FixtureHandler((request, _) =>
+        {
+            Assert.Contains("task_ids=21%2C22", request.RequestUri!.Query);
+            return Json(new { task_info = new Dictionary<string, object>
+            {
+                ["21"] = new { status = "1", file_size = "42", finished_size = "10" },
+            } });
+        });
+        using var client = Client(handler);
+
+        IReadOnlyList<OfflineTask> tasks = await client.QueryOfflineTasksAsync([21, 22], TestContext.Current.CancellationToken);
+
+        Assert.Equal(42, tasks[0].Size);
+        Assert.Equal(10, tasks[0].CompletedBytes);
+        Assert.Equal(1, tasks[1].Result);
+    }
+
     [Fact]
     public async Task ResumesMultipartUploadAndFinalizesInPartOrder()
     {
