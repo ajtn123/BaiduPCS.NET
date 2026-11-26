@@ -32,10 +32,13 @@ internal sealed class BaiduTransport : IDisposable
 
     internal Uri Pcs(string resource, string method, params (string Key, string Value)[] query) =>
         Build(Scheme, string.IsNullOrWhiteSpace(_settings.PcsHost) ? PcsHost : _settings.PcsHost,
-            $"/rest/2.0/pcs/{resource}", [("app_id", Format(_settings.AppId)), ("method", method), .. query]);
+            $"/rest/2.0/pcs/{resource}", [("method", method), .. query.Any(item => item.Key == "app_id")
+                ? query : [("app_id", Format(_settings.AppId)), .. query]]);
 
     internal Uri Pan(string resource, params (string Key, string Value)[] query) =>
         Build(Scheme, PanHost, $"/api/{resource}", query);
+
+    internal Uri PanPage(string path) => Build("https", PanHost, path);
 
     internal static Uri Build(string scheme, string host, string path, params (string Key, string Value)[] query) =>
         new UriBuilder(scheme, host) { Path = path, Query = EncodeQuery(query) }.Uri;

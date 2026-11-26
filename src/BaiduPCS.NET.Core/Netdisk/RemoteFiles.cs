@@ -19,11 +19,17 @@ public sealed partial class NetdiskClient : IDisposable
     private const int PageSize = 1000;
     private const int PageLimit = 2000;
     private readonly BaiduTransport _transport;
+    private readonly Account _account;
+    private readonly ClientSettings _settings;
 
     public NetdiskClient(ClientSettings settings, Account account) : this(settings, account, null) { }
 
-    internal NetdiskClient(ClientSettings settings, Account account, HttpMessageHandler? handler) =>
+    internal NetdiskClient(ClientSettings settings, Account account, HttpMessageHandler? handler)
+    {
+        _settings = settings;
+        _account = account;
         _transport = new BaiduTransport(settings, account.Credentials, handler);
+    }
 
     public async Task<Quota> GetQuotaAsync(CancellationToken cancellationToken = default)
     {

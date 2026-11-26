@@ -8,6 +8,42 @@ namespace BaiduPCS.Tests;
 public sealed class NetdiskClientTests
 {
     [Fact]
+    public async Task DirectDownloadUsesPanAppIdAndKeepsOnlyUsableLinks()
+    {
+        using var handler = new FixtureHandler((request, _) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            string query = request.RequestUri!.Query;
+            Assert.Contains("app_id=250528", query);
+            Assert.DoesNotContain("app_id=266719", query);
+            Assert.Contains("method=locatedownload", query);
+            Assert.Contains("devuid=", query);
+            return Json(new { urls = new[] {
+                new { url = "http://example.com/file", encrypt = 0 },
+                new { url = "https://example.com/encrypted", encrypt = 1 },
+                new { url = "file:///tmp/local", encrypt = 0 },
+            } });
+        });
+        using var client = new NetdiskClient(new ClientSettings(), new Account
+        {
+            Id = 1, Name = "Fixture", Credentials = new Credentials { Bduss = "fixture" },
+        }, handler);
+
+        Uri link = Assert.Single(await client.LocateDownloadAsync("/file", TestContext.Current.CancellationToken));
+
+        Assert.Equal("https://example.com/file", link.AbsoluteUri);
+    }
+
+    [Fact]
+    public void MatchesUpstreamDownloadSignatureVectors()
+    {
+        Assert.Equal("b6bb7a6f46899e181baea58798d4fdb889775c2c", NetdiskClient.DownloadSignature(
+            10086, "test_bduss", "1571140066", "O|1E67351CCE80B2CF48DB511CD77ACD9F"));
+        Assert.Equal("8RxCbsVeSzn2UjxJAAiV9QQs/WetOj2FJUGwjsMG6SgxFMWlLS/U1Q==", Convert.ToBase64String(
+            NetdiskClient.PanSignature("e8c7d729eea7b54551aa594f942decbe", "37dbe07ade9359c1aa70807e847f768c13360ad2")));
+    }
+
+    [Fact]
     public async Task RetriesTransientQuotaResponse()
     {
         using var handler = new FixtureHandler((_, count) =>
