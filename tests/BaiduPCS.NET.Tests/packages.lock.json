@@ -150,7 +150,7 @@
           "xunit.v3.runner.common": "[4.0.3]"
         }
       },
-      "BaiduPCS.NET": {
+      "baidupcs": {
         "type": "Project",
         "dependencies": {
           "BaiduPCS.NET.Core": "[1.0.0, )",
