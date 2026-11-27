@@ -1,6 +1,6 @@
-# Contributing to BaiduPCS.NET
+# 参与 BaiduPCS.NET 开发
 
-Use an installed .NET SDK that can target `net10.0`. Run the CLI and offline tests from the repository root.
+安装支持 `net10.0` 的 .NET SDK，然后在仓库根目录构建并运行离线测试。
 
 ```sh
 dotnet restore BaiduPCS.NET.slnx --locked-mode
@@ -9,15 +9,15 @@ dotnet test --solution BaiduPCS.NET.slnx --no-build --no-restore
 dotnet run --project src/BaiduPCS.NET.Cli -- --help
 ```
 
-## Report a bug
+## 报告问题
 
-Check existing issues first. Include the BaiduPCS.NET version, operating system and architecture, command, expected behavior, and sanitized output. For Baidu service errors, include the numeric error code and whether the same operation works in BaiduPCS-Go or the official client, if you have checked. [Issues](https://github.com/ajtn123/BaiduPCS.NET/issues)
+先查看现有议题。报告时请附上 BaiduPCS.NET 版本、系统及架构、命令、预期结果和脱敏后的输出。若遇到百度服务错误，请提供数字错误码。如果已对照 BaiduPCS-Go 或官方客户端，也请说明同一操作的结果。 [议题列表](https://github.com/ajtn123/BaiduPCS.NET/issues)
 
-Keep profile files, cookies, tokens, share links, and private paths out of public reports. For a suspected vulnerability, use the private reporting channel. [Security policy](SECURITY.md)
+公开报告中请勿附上配置文件、Cookie、令牌、分享链接或私有路径。疑似漏洞请通过私密渠道报告。 [安全政策](SECURITY.md)
 
-## Submit a change
+## 提交变更
 
-- Explain the behavior change and how you verified it in the pull request.
-- Keep command parsing and display in the CLI project. Keep Netdisk requests and transfer logic in the core project. [Architecture](docs/architecture.md)
-- Use synthetic responses for protocol tests. For live testing, use a separate `BAIDUPCS_CONFIG_DIR` and disposable remote files.
-- Update the command reference when adding a command, option, or alias. Update the dependency lock file when changing package references. [Command reference](docs/commands.md)
+- 在拉取请求中说明行为变化和验证方式。
+- 命令解析和显示放在 CLI 项目中，网盘请求和传输逻辑放在核心项目中。 [项目架构](docs/architecture.md)
+- 协议测试使用模拟响应。实网测试使用独立的 `BAIDUPCS_CONFIG_DIR` 和可丢弃的网盘文件。
+- 新增命令、选项或别名时更新命令参考。变更包引用时更新依赖锁文件。 [命令参考](docs/commands.md)

@@ -1,35 +1,35 @@
-# Architecture and API design
+# 架构与 API
 
-## Projects
+## 项目
 
-| Project | Responsibility |
+| 项目 | 职责 |
 | --- | --- |
-| `BaiduPCS.NET.Cli` | Spectre command registration, validation, prompts, shell editing and completion, and transfer and error output |
-| `BaiduPCS.NET.Core` | Profile state, Baidu requests, remote paths, transfer workers, checksums, legacy file encryption, and release staging |
-| `BaiduPCS.NET.Tests` | Fixture requests and responses, transfer interruption and failure tests, cryptography vectors, archive checks, and CLI parsing and localization tests |
+| `BaiduPCS.NET.Cli` | 注册、解析和校验命令，提供交互提示、命令行编辑与补全，显示传输状态和错误 |
+| `BaiduPCS.NET.Core` | 管理配置、百度请求、远程路径、传输、校验值、旧版文件加密和更新暂存 |
+| `BaiduPCS.NET.Tests` | 模拟协议请求和响应，测试传输中断与故障、密码学向量、归档校验、参数解析和本地化 |
 
-Each supported runtime has two single-file executables, one self-contained and one framework-dependent. `BaiduPCS.NET.Core` is built into both and exposes typed APIs inside the solution.
+每个受支持的运行时都提供自包含和依赖框架的单文件可执行程序。两者都包含 `BaiduPCS.NET.Core`，解决方案内可调用其强类型 API。
 
-## Command execution
+## 命令执行
 
-The one-shot CLI and the shell pass the same argument arrays to the Spectre command app. Settings types parse options and validate local input before a service call. The shell uses the same registration data for command completion and queries the active account for remote path completion. Its history excludes commands that directly carry passwords, keys, cookies, access tokens, or sharing codes.
+一次性执行和交互式终端都把相同的参数数组交给 Spectre 命令应用。设置类型会在请求服务前解析选项并校验本地输入。交互式终端使用同一份命令注册信息实现补全，并通过当前帐号查询网盘路径。直接包含密码、密钥、Cookie、访问令牌或提取码的命令不会写入历史记录。
 
-Commands write payloads and results to stdout. Terminal transfers and batch operations show a live table and a final results table. When redirected, commands print line output, errors go to stderr, and explicitly requested progress goes to stderr. Exit codes are `0` for success, `1` for operation or batch failure, `2` for invalid input, and `130` for interruption. `run` propagates the child process exit code. The first interrupt cancels scheduling and lets completed transfer ranges or parts be recorded. A second interrupt allows immediate process termination.
+命令通过标准输出返回数据和结果。在终端中，传输和批量操作会显示实时进度表及结果表。重定向时改为逐行输出，错误和显式请求的进度写入标准错误。退出码 `0` 表示成功，`1` 表示单项操作或批次失败，`2` 表示输入无效，`130` 表示中断。`run` 传递子进程的退出码。首次中断会停止调度并保留已完成的分段或分片记录，再次中断会立即退出。
 
-## Core API
+## 核心 API
 
-| API | Role |
+| API | 用途 |
 | --- | --- |
-| `ProfileStore.ReadAsync` and `UpdateAsync` | Read the profile and apply an atomic, locked update to settings or account state |
-| `LegacyProfile.ReadAsync` and `Merge` | Parse the Go profile without opening it for write, then merge accounts by ID and carry over Go settings |
-| `PassportLogin.SignInAsync` and `IPassportPrompts` | Legacy password and verification challenge handling. Unsupported for BaiduPCS.NET sign-in. |
-| `AccountIdentity.ResolveAsync` | Resolve the saved session to an account and support the configured manual-name fallback |
-| `NetdiskClient` | List and search using `RemoteEntry`, read metadata and quota, perform file operations, locate links, transfer files, manage shares, query offline tasks, and manage the recycle bin |
-| `FileChecksums.ComputeAsync` and `GetExportChecksumsAsync` | Compute local checksums or read remote export checksums using metadata and range requests |
-| `LegacyFileCrypto` | Stream the IV-prefixed legacy AES modes and gzip format |
-| `ReleaseUpdater` | Discover stable GitHub releases and verify, stage, and install the executable for the current runtime |
+| `ProfileStore.ReadAsync`、`UpdateAsync` | 读取配置，在锁保护下原子更新设置或帐号状态 |
+| `LegacyProfile.ReadAsync`、`Merge` | 只读解析 Go 配置，按 UID 合并帐号并导入设置 |
+| `PassportLogin.SignInAsync`、`IPassportPrompts` | 处理旧版密码及验证流程。BaiduPCS.NET 登录命令无需此流程 |
+| `AccountIdentity.ResolveAsync` | 根据会话解析帐号，支持已配置的手动帐号名称 |
+| `NetdiskClient` | 使用 `RemoteEntry` 列目录、搜索和读取元信息，查询容量，管理文件、直链、传输、分享、离线任务和回收站 |
+| `FileChecksums.ComputeAsync`、`GetExportChecksumsAsync` | 计算本地校验值，或通过元信息和范围请求读取远程导出所需的校验值 |
+| `LegacyFileCrypto` | 以流式方式处理带 IV 前缀的旧版 AES 模式和 gzip 格式 |
+| `ReleaseUpdater` | 发现 GitHub 稳定版，并校验、暂存和安装对应运行时的可执行程序 |
 
-Construct a `NetdiskClient` with `ClientSettings` and the account whose session should be used. Dispose it after the operation or batch. Public asynchronous methods accept a `CancellationToken`. `BaiduApiException` exposes a numeric service code and HTTP status without embedding request URIs or credential values in its message.
+使用 `ClientSettings` 和目标帐号的会话创建 `NetdiskClient`，在操作或批次结束后释放。公共异步方法接受 `CancellationToken`。`BaiduApiException` 提供服务数字错误码和 HTTP 状态，消息中省略请求地址和凭据。
 
 ```csharp
 using BaiduPCS.Configuration;
@@ -43,14 +43,20 @@ await foreach (RemoteEntry entry in client.ListAsync("/", cancellationToken: can
     Console.WriteLine(entry.Path);
 ```
 
-## State, transport, and transfers
+## 状态、网络与传输
 
-Windows uses roaming application data, macOS uses `~/Library/Application Support`, and Linux uses `XDG_CONFIG_HOME` or `~/.config`. `BAIDUPCS_CONFIG_DIR` overrides the default. Settings and accounts are stored in `profile.json`. State changes use a lock and replace the file only after writing and flushing a temporary file. Unix profile files and newly created profile directories are private to the user. Windows files inherit access permissions from their enclosing directory.
+Windows 使用漫游应用数据目录，macOS 使用 `~/Library/Application Support`，Linux 使用 `XDG_CONFIG_HOME` 或 `~/.config`。`BAIDUPCS_CONFIG_DIR` 可覆盖默认位置。设置和帐号保存在 `profile.json` 中，更新时先加锁并将数据写入临时文件，刷新后再替换原文件。Unix 下配置文件及新建配置目录仅当前用户可访问。Windows 文件继承上级目录的权限。
 
-The Baidu transport keeps a cookie container per client, applies endpoint-specific request formats and user agents, supports HTTP/SOCKS5 proxy routing and local interface selection, and validates HTTPS certificates. Reads retry transient connection and service failures. Operations such as permanent deletion avoid automatic retries. Passport sign-in uses an isolated session and validates redirect destinations before following them.
+每个客户端维护独立的 Cookie 容器，并根据接口设置请求格式和用户代理。传输层支持 HTTP/SOCKS5 代理和本地接口选择，并验证 HTTPS 证书。读取操作会重试临时网络及服务错误，永久删除等操作跳过自动重试。旧版 Passport 流程使用独立会话，并检查重定向目标。
 
-Downloads probe range support, write disjoint ranges to a partial file, and record completion in the destination's `.baidupcs-partial` directory. Servers that ignore ranges use a sequential transfer. Checkpoints bind ranges to the account, remote identity, size, and modification time. Uploads store session and completed part checkpoints under `uploads` in the profile directory, keyed by account and target and validated against the local file. Completed downloads replace the destination only after transfer validation. Uploads finalize with checksums in part order. Go transfer checkpoints use a different format and can be finished with BaiduPCS-Go.
+下载先探测服务器的范围请求支持情况，然后将互不重叠的范围写入临时文件，并在目标目录的 `.baidupcs-partial` 下记录进度。服务端忽略范围请求时改为顺序下载。检查点按帐号、远程文件标识、大小和修改时间匹配。上传会在配置目录的 `uploads` 下保存会话和分片检查点，按帐号和目标匹配，并验证本地源文件。下载在校验后替换目标文件，上传按分片顺序提交校验值。Go 使用另一种检查点格式，已有任务可用 BaiduPCS-Go 完成。
 
-## Verification
+## 验证
 
-The fixture suite covers pagination, the PCS listing fallback, path matching, remote mutation errors, download signature vectors, expired links, range and part recovery, authentication challenges, archive verification, and legacy AES vectors. CI compares the one-shot CLI and shell with a synthetic profile. Authenticated comparison uses a separate profile and disposable remote files. The README records the account and service limits observed during that comparison.
+离线测试覆盖分页、PCS 列目录回退、路径匹配、远程变更错误、下载签名、链接过期、分段与分片恢复、验证挑战、归档校验和旧版 AES 向量。CI 用模拟配置比较一次性执行和交互式终端的行为。实网对照使用独立配置和可丢弃的文件。
+
+与 BaiduPCS-Go 4.0.1 的实网对照已验证配置导入、容量查询、文件和目录操作、双向传输、创建和取消分享、回收站还原，以及离线任务的查询、列表和删除。
+
+百度可能更改接口或按帐号限制功能。在测试会话中，两款客户端都无法生成网盘网页下载链接，也无法将分享转存回创建分享的帐号。直链下载成功。重复提交离线任务时，两者都收到错误 `36040`。Go 默认上传失败，加上 `--norapid` 后成功。.NET 的 `--skip-rapid-check` 分片上传也成功。清空帐号级记录经模拟测试验证，从另一帐号转存分享仍待实网验证。
+
+固定基线中的 Go 命令已关闭独立的秒传链接导入。校验链接和清单导出仍可用于记录文件元信息。

@@ -1,15 +1,15 @@
-# Security policy
+# 安全政策
 
-## Report a vulnerability privately
+## 私下报告漏洞
 
-Send suspected BaiduPCS.NET vulnerabilities through GitHub's private reporting form. Use public issues for ordinary bugs and feature requests. [Report a vulnerability](https://github.com/ajtn123/BaiduPCS.NET/security/advisories/new)
+如发现疑似漏洞，请通过 GitHub 的私密表单报告。一般缺陷和功能请求可在公开议题中提交。 [报告漏洞](https://github.com/ajtn123/BaiduPCS.NET/security/advisories/new)
 
-Include the affected version, platform, command or workflow, impact, and steps to reproduce with a synthetic account or test files where possible. Remove passwords, cookies, tokens, profile contents, share codes, and private filenames from logs and attachments. Test only with accounts and files you control.
+请提供受影响的版本、平台、命令或操作流程、影响范围及复现步骤。尽量使用测试帐号或测试文件，并在提交之前从日志和附件中移除密码、Cookie、令牌、配置内容、提取码及私有文件名。仅使用自己有权控制的帐号和文件进行测试。
 
-Use the private report to coordinate disclosure with the maintainers. Include the exact commit if you tested a source build. [Latest stable release](https://github.com/ajtn123/BaiduPCS.NET/releases/latest)
+请通过私密报告与维护者协调披露。如果测试的是自行构建的版本，请注明具体提交。 [最新稳定版](https://github.com/ajtn123/BaiduPCS.NET/releases/latest)
 
-## Keep your account credentials private
+## 保护帐号凭据
 
-`baidupcs env` prints the profile path. The profile stores session credentials, so keep it in a user-private directory. Use masked input or the credential options that read from standard input when available. Keep profile files and credential-bearing command output out of issues, commits, and CI logs.
+`baidupcs env` 可查看配置文件路径。配置含有会话凭据，请存放在仅本人可访问的目录中。优先使用屏蔽输入的提示框或从标准输入读取凭据的选项。请勿在议题、提交或 CI 日志中包含配置文件或带有凭据的命令输出。
 
-If a session credential is exposed, invalidate the affected session through Baidu and sign in again.
+会话凭据泄露后，请在百度端使相关会话失效，再重新登录。
