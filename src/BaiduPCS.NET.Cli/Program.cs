@@ -95,26 +95,26 @@ internal static class Program
             completions.Register<EnvironmentCommand>(config, "env").WithDescription(Ui.Text("Show configuration paths and environment variables."));
             completions.Register<PrintWorkingDirectoryCommand>(config, "pwd").WithDescription(Ui.Text("Print the active account's remote working directory."));
             completions.Register<QuotaCommand>(config, "quota").WithDescription(Ui.Text("Show total, used, and free storage space."));
-            completions.Register<ListFilesCommand>(config, "list").WithDescription(Ui.Text("List a remote directory."));
+            completions.Register<ListFilesCommand>(config, "list", "ls", "ll").WithDescription(Ui.Text("List a remote directory."));
             completions.Register<ChangeDirectoryCommand>(config, "cd").WithDescription(Ui.Text("Set the active account's remote working directory."));
             completions.Register<SearchFilesCommand>(config, "search").WithDescription(Ui.Text("Find files by name."));
-            completions.Register<MetadataCommand>(config, "metadata").WithDescription(Ui.Text("Show metadata for remote paths."));
+            completions.Register<MetadataCommand>(config, "metadata", "meta").WithDescription(Ui.Text("Show metadata for remote paths."));
             completions.Register<MatchCommand>(config, "match").WithDescription(Ui.Text("Expand a remote wildcard pattern."));
             completions.Register<TreeCommand>(config, "tree").WithDescription(Ui.Text("Show a remote directory tree."));
             completions.Register<CreateDirectoryCommand>(config, "mkdir").WithDescription(Ui.Text("Create remote directories."));
-            completions.Register<RemoveFilesCommand>(config, "remove").WithDescription(Ui.Text("Remove files or directories from the drive."));
-            completions.Register<CopyFilesCommand>(config, "copy").WithDescription(Ui.Text("Copy files or directories on the drive."));
-            completions.Register<MoveFilesCommand>(config, "move").WithDescription(Ui.Text("Move files or directories on the drive."));
+            completions.Register<RemoveFilesCommand>(config, "remove", "rm").WithDescription(Ui.Text("Remove files or directories from the drive."));
+            completions.Register<CopyFilesCommand>(config, "copy", "cp").WithDescription(Ui.Text("Copy files or directories on the drive."));
+            completions.Register<MoveFilesCommand>(config, "move", "mv").WithDescription(Ui.Text("Move files or directories on the drive."));
             completions.Register<RenameFileCommand>(config, "rename").WithDescription(Ui.Text("Rename a file or directory within its parent."));
-            completions.Register<DownloadLinksCommand>(config, "download-links").WithDescription(Ui.Text("Resolve direct or Pan web download links."));
-            completions.Register<DownloadCommand>(config, "download").WithDescription(Ui.Text("Download files and directory trees from Baidu Netdisk."));
-            completions.Register<UploadCommand>(config, "upload").WithDescription(Ui.Text("Upload local files or directory trees to a remote directory."));
+            completions.Register<DownloadLinksCommand>(config, "download-links", "locate").WithDescription(Ui.Text("Resolve direct or Pan web download links."));
+            completions.Register<DownloadCommand>(config, "download", "d").WithDescription(Ui.Text("Download files and directory trees from Baidu Netdisk."));
+            completions.Register<UploadCommand>(config, "upload", "u").WithDescription(Ui.Text("Upload local files or directory trees to a remote directory."));
             completions.Register<ChecksumCommand>(config, "checksum").WithDescription(Ui.Text("Calculate Baidu file checksums and checksum links."));
             completions.Register<ExportCommand>(config, "export").WithDescription(Ui.Text("Export remote file checksums and directory structure."));
             completions.Register<ShellCommand>(config, "shell").WithData(completions).WithDescription(Ui.Text("Start the interactive shell."));
             completions.Register<RunProcessCommand>(config, "run").WithDescription(Ui.Text("Run a local executable with 'run -- EXECUTABLE ARG...'."));
-            completions.Register<ClearCommand>(config, "clear").WithDescription(Ui.Text("Clear the terminal."));
-            completions.Register<ExitCommand>(config, "exit").WithDescription(Ui.Text("Exit the BaiduPCS.NET shell."));
+            completions.Register<ClearCommand>(config, "clear", "cls").WithDescription(Ui.Text("Clear the terminal."));
+            completions.Register<ExitCommand>(config, "exit", "quit").WithDescription(Ui.Text("Exit the BaiduPCS.NET shell."));
             config.AddBranch("offline", branch =>
             {
                 branch.SetDescription(Ui.Text("Manage server-side download tasks."));

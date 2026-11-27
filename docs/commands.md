@@ -9,13 +9,13 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 | `setastoken` | `account set-access-token` | Enter the token at the masked prompt or supply `--stdin`. |
 | `quota` | `quota` | Total, used, and free space. |
 | `cd`, `pwd` | `cd`, `pwd` | `cd --list` also lists the target. |
-| `ls`, `l`, `ll` | `list` | `--totals`, `--sort name\|time\|size`, `--descending`, `--json`. |
+| `ls`, `l`, `ll` | `list` | Aliases `ls` and `ll`. Options include `--totals`, `--sort name\|time\|size`, `--descending`, and `--json`. |
 | `search`, `s` | `search` | `--path`, `--recursive`, `--totals`, and `--json`. |
-| `tree`, `t`, `meta`, `match` | `tree`, `metadata`, `match` | `tree --depth` limits recursion and `--file-ids` displays IDs. `metadata --json` returns full paths and file IDs. |
-| `mkdir`, `rm`, `cp`, `mv` | `mkdir`, `remove`, `copy`, `move`, `rename` | Copy and move accept multiple sources and a destination directory. Move also supports one source and a new path. |
-| `d`, `download` | `download` | `--mode direct\|pcs\|stream`, `--link-index`, `--parallel`, `--file-concurrency`, `--retries`, `--worker-status`, `--test`, `--overwrite`, `--output-directory`, `--full-path`, `--preserve-mtime`, `--executable`, `--verify`, `--skip-verification`. |
-| `lt`, `locate` | `download-links` | Add `--pan` for the Pan web endpoint. |
-| `u`, `upload` | `upload` | Pass one or more sources and then the remote directory. Use `--as NAME` to rename a single file during upload. Use `--parallel`, `--file-concurrency`, `--retries`, `--skip-rapid-check`, and `--conflict skip\|overwrite\|overwrite-if-size-differs`. |
+| `tree`, `t`, `meta`, `match` | `tree`, `metadata`, `match` | Alias `meta` for `metadata`. `tree --depth` limits recursion and `--file-ids` displays IDs. `metadata --json` returns full paths and file IDs. |
+| `mkdir`, `rm`, `cp`, `mv` | `mkdir`, `remove`, `copy`, `move`, `rename` | Aliases `rm`, `cp`, and `mv`. Copy and move accept multiple sources and a destination directory. Move also supports one source and a new path. |
+| `d`, `download` | `download` | Alias `d`. Options include `--mode direct\|pcs\|stream`, `--link-index`, `--parallel`, `--file-concurrency`, `--retries`, `--worker-status`, `--test`, `--overwrite`, `--output-directory`, `--full-path`, `--preserve-mtime`, `--executable`, `--verify`, and `--skip-verification`. |
+| `lt`, `locate` | `download-links` | Alias `locate`. Add `--pan` for the Pan web endpoint. |
+| `u`, `upload` | `upload` | Alias `u`. Pass one or more sources and then the remote directory. Use `--as NAME` to rename a single file during upload. Options include `--parallel`, `--file-concurrency`, `--retries`, `--skip-rapid-check`, and `--conflict skip\|overwrite\|overwrite-if-size-differs`. |
 | `sf`, `sumfile` | `checksum` | Size, MD5, first 256 KiB MD5, CRC32, and checksum-link output. |
 | `ep`, `export` | `export` | `--stdout` writes only records. `--out` appends to a file. Use `--format manifest\|checksum-link`, `--root`, `--recursive`, or `--retries`. |
 | `share set`, `share list`, `share cancel` | `share create`, `share list`, `share cancel` | Use `--code`, `--days`, `--combined`, and `list --page`. |
@@ -24,9 +24,9 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 | `offlinedl`, `od`, `clouddl` | `offline add\|query\|list\|cancel\|delete` | Add accepts `--path`. List accepts `--page`. Deletion supports IDs or `--all`. |
 | `recycle` | `recycle list\|restore\|delete` | Use `list --page`. Permanent deletion supports IDs or `--all`. |
 | `config`, `config set`, `config reset`, `env` | `config show`, `config set KEY=VALUE...`, `config reset`, `env` | `config show` lists supported kebab-case setting names. Use `BAIDUPCS_CONFIG_DIR` and `BAIDUPCS_VERBOSE`. |
-| `run`, `clear`, `cls`, `quit`, `exit` | `run -- EXECUTABLE ARG...`, `clear`, `exit` | `shell` starts a command session explicitly. |
+| `run`, `clear`, `cls`, `quit`, `exit` | `run -- EXECUTABLE ARG...`, `clear`, `exit` | Aliases `cls` and `quit`. `shell` starts a command session explicitly. |
 | `tool showtime`, `getip`, `enc`, `dec` | `tool time`, `tool ip`, `tool encrypt`, `tool decrypt` | Encrypt and decrypt accept `--method`, `--key-stdin`, `--no-gzip`, `--remove-source`, and `--overwrite`. |
-| `update` | `update check`, `update apply` | `apply --yes` skips the prompt. Use `--scope global`, `--scope local`, or `--tool-path PATH` for a .NET tool. A standalone executable updates its matching archive and retains `.previous`. |
+| `update` | `update check`, `update apply` | `apply --yes` skips the prompt. The updater verifies the executable for the current runtime and retains a `.previous` copy. |
 
 On Windows, a helper installs the standalone update after the current process exits. The next launch clears the helper from a completed update. To roll back, close BaiduPCS.NET and restore the `.previous` file to the executable's original name.
 

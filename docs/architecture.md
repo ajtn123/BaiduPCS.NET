@@ -8,7 +8,7 @@
 | `BaiduPCS.NET.Core` | Profile state, Baidu requests, remote paths, transfer workers, checksums, legacy file encryption, and release staging |
 | `BaiduPCS.NET.Tests` | Fixture requests and responses, transfer interruption and failure tests, cryptography vectors, archive checks, and CLI parsing and localization tests |
 
-The NuGet artifact is a .NET tool. `BaiduPCS.NET.Core` is built with the application and exposes typed APIs inside the solution. The repository does not publish a separate SDK package.
+The release artifact is a self-contained executable for each supported runtime. `BaiduPCS.NET.Core` is built into it and exposes typed APIs inside the solution.
 
 ## Command execution
 
@@ -27,7 +27,7 @@ Commands write payloads and results to stdout. Progress and errors go to stderr.
 | `NetdiskClient` | List and search using `RemoteEntry`, read metadata and quota, perform file operations, locate links, transfer files, manage shares, query offline tasks, and manage the recycle bin |
 | `FileChecksums.ComputeAsync` and `GetExportChecksumsAsync` | Compute local checksums or read remote export checksums using metadata and range requests |
 | `LegacyFileCrypto` | Stream the IV-prefixed legacy AES modes and gzip format |
-| `ReleaseUpdater` | Discover stable GitHub releases, verify an exact runtime archive, and stage or replace a standalone executable |
+| `ReleaseUpdater` | Discover stable GitHub releases and verify, stage, and install the executable for the current runtime |
 
 Construct a `NetdiskClient` with `ClientSettings` and the account whose session should be used. Dispose it after the operation or batch. Public asynchronous methods accept a `CancellationToken`. `BaiduApiException` exposes a numeric service code and HTTP status without embedding request URIs or credential values in its message.
 

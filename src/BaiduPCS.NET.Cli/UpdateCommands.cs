@@ -32,13 +32,6 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
     public sealed class Settings : CommonSettings
     {
         [CommandOption("--yes")] public bool Yes { get; init; }
-        [CommandOption("--scope <SCOPE>")] public string? Scope { get; init; }
-        [CommandOption("--tool-path <PATH>")] public string? ToolPath { get; init; }
-
-        public override ValidationResult Validate() => Scope is not (null or "global" or "local" or "tool-path" or "standalone")
-            ? ValidationResult.Error("Scope must be global, local, tool-path, or standalone.")
-            : (Scope == "tool-path" && ToolPath is null) || ToolPath is not null && Scope is not (null or "tool-path")
-                ? ValidationResult.Error("Use --tool-path with the tool-path scope.") : ValidationResult.Success();
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -48,9 +41,8 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
 #else
         bool standalone = false;
 #endif
-        string scope = settings.Scope ?? (settings.ToolPath is not null ? "tool-path" : standalone ? "standalone" : "global");
-        if (scope == "standalone" && !standalone)
-            throw new ArgumentException("The standalone update scope requires a single-file BaiduPCS.NET executable.");
+        if (!standalone)
+            throw new ArgumentException("Run the standalone BaiduPCS.NET executable to install updates.");
 
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         var updater = new ReleaseUpdater(http);
@@ -69,14 +61,6 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
                 return 0;
         }
 
-        if (scope != "standalone")
-        {
-            int result = await UpdateToolAsync(scope, settings.ToolPath, release.Version, cancellationToken);
-            if (result == 0)
-                Program.RestartAfterUpdate = true;
-            return result;
-        }
-
         string executable = Environment.ProcessPath ?? throw new InvalidOperationException("Could not identify the running application.");
         string staged = await updater.StageStandaloneAsync(release, RuntimeInformation.RuntimeIdentifier, executable, cancellationToken);
         if (OperatingSystem.IsWindows())
@@ -93,20 +77,6 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
 
         Program.RestartAfterUpdate = true;
         return 0;
-    }
-
-    private static async Task<int> UpdateToolAsync(string scope, string? path, Version version, CancellationToken token)
-    {
-        var processInfo = new ProcessStartInfo("dotnet") { UseShellExecute = false };
-        foreach (string arg in new[] { "tool", "update", "BaiduPCS.NET", "--version", version.ToString(3) })
-            processInfo.ArgumentList.Add(arg);
-        processInfo.ArgumentList.Add("--" + scope);
-        if (scope == "tool-path")
-            processInfo.ArgumentList.Add(Path.GetFullPath(path!));
-
-        using Process process = Process.Start(processInfo) ?? throw new InvalidOperationException("Could not start the .NET tool updater.");
-        await process.WaitForExitAsync(token);
-        return process.ExitCode;
     }
 
     private static void StartWindowsHelper(string staged, string executable)

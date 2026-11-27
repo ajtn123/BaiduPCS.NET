@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -20,14 +19,16 @@ public sealed class ReleaseUpdaterTests
         Assert.Equal(expected, ReleaseUpdater.IsNewer(release, current));
     }
 
-    [Fact]
-    public async Task VerifiesStagesAndReplacesTheRuntimeArchiveWithRollback()
+    [Theory]
+    [InlineData("win-x64", ".exe")]
+    [InlineData("linux-musl-arm64", "")]
+    public async Task VerifiesStagesAndReplacesTheRuntimeExecutableWithRollback(string runtime, string extension)
     {
         string fileName = OperatingSystem.IsWindows() ? "baidupcs.exe" : "baidupcs";
-        const string archiveName = "BaiduPCS.NET-v1.2.3-win-x64.zip";
-        byte[] archive = CreateArchive(fileName);
-        string checksum = Convert.ToHexStringLower(SHA256.HashData(archive));
-        using var http = Fixture(archiveName, archive, checksum);
+        string assetName = $"BaiduPCS.NET-v1.2.3-{runtime}{extension}";
+        byte[] executable = "replacement"u8.ToArray();
+        string checksum = Convert.ToHexStringLower(SHA256.HashData(executable));
+        using var http = Fixture(assetName, executable, checksum);
         var updater = new ReleaseUpdater(http);
         StableRelease? release = await updater.LatestAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(release);
@@ -36,12 +37,11 @@ public sealed class ReleaseUpdaterTests
         {
             string target = Path.Combine(directory, fileName);
             File.WriteAllText(target, "previous");
-            string staged = await updater.StageStandaloneAsync(release, "win-x64", target, TestContext.Current.CancellationToken);
+            string staged = await updater.StageStandaloneAsync(release, runtime, target, TestContext.Current.CancellationToken);
             Assert.Equal("previous", File.ReadAllText(target));
             string backup = ReleaseUpdater.ReplaceStandalone(target, staged);
             Assert.Equal("replacement", File.ReadAllText(target));
             Assert.Equal("previous", File.ReadAllText(backup));
-            Assert.False(File.Exists(Path.Combine(directory, "unexpected.txt")));
         }
         finally
         {
@@ -86,10 +86,10 @@ public sealed class ReleaseUpdaterTests
     }
 
     [Fact]
-    public async Task RejectsAnArchiveWithTheWrongChecksum()
+    public async Task RejectsAnExecutableWithTheWrongChecksum()
     {
-        const string archiveName = "BaiduPCS.NET-v1.2.3-win-x64.zip";
-        using var http = Fixture(archiveName, [1, 2, 3], new string('0', 64));
+        const string assetName = "BaiduPCS.NET-v1.2.3-win-x64.exe";
+        using var http = Fixture(assetName, [1, 2, 3], new string('0', 64));
         var updater = new ReleaseUpdater(http);
         StableRelease? release = await updater.LatestAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(release);
@@ -109,27 +109,13 @@ public sealed class ReleaseUpdaterTests
         }
     }
 
-    private static byte[] CreateArchive(string fileName)
-    {
-        using var data = new MemoryStream();
-        using (var zip = new ZipArchive(data, ZipArchiveMode.Create, leaveOpen: true))
-        {
-            using (var executable = new StreamWriter(zip.CreateEntry(fileName).Open()))
-                executable.Write("replacement");
-            using var unexpected = new StreamWriter(zip.CreateEntry("../unexpected.txt").Open());
-            unexpected.Write("ignored");
-        }
-
-        return data.ToArray();
-    }
-
-    private static HttpClient Fixture(string name, byte[] archive, string checksum) => new(new Handler(request =>
+    private static HttpClient Fixture(string name, byte[] executable, string checksum) => new(new Handler(request =>
     {
         HttpContent data = request.RequestUri!.AbsolutePath.Split('/')[^1] switch
         {
             "latest" => JsonContent.Create(new { tag_name = "v1.2.3", assets = new[] { new { name }, new { name = "SHA256SUMS" } } }),
             "SHA256SUMS" => new StringContent(checksum + "  " + name + "\n"),
-            var item when item == name => new ByteArrayContent(archive),
+            var item when item == name => new ByteArrayContent(executable),
             _ => throw new InvalidOperationException("Unexpected fixture request."),
         };
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = data };

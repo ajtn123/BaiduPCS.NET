@@ -34,33 +34,9 @@ jobs:
       - name: Compare one-shot and shell commands
         shell: pwsh
         run: ./.github/scripts/test-cli.ps1
-      - name: Pack and smoke-test the .NET tool
-        if: matrix.runner == 'ubuntu-latest'
-        shell: pwsh
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          $project = 'src/BaiduPCS.NET.Cli/BaiduPCS.NET.Cli.csproj'
-          $properties = @()
-          if ($env:GITHUB_REF_TYPE -eq 'tag') { $properties += "-p:Version=$($env:GITHUB_REF_NAME.Substring(1))" }
-          $version = dotnet msbuild $project -nologo -getProperty:Version @properties
-          dotnet pack $project --configuration Release --no-restore --output artifacts/nuget @properties
-          @'
-          <?xml version="1.0" encoding="utf-8"?>
-          <configuration><packageSources><clear /><add key="smoke" value="nuget" /></packageSources></configuration>
-          '@ | Set-Content artifacts/NuGet.Config
-          dotnet tool install BaiduPCS.NET --version $version --tool-path artifacts/tool --configfile artifacts/NuGet.Config
-          $actual = & (Join-Path $PWD 'artifacts/tool/baidupcs') --version
-          $help = & (Join-Path $PWD 'artifacts/tool/baidupcs') --help
-          if (($actual -join '').Trim() -ne $version -or ($help -join "`n") -notmatch '\bdownload\b') { throw 'Tool smoke test failed.' }
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: matrix.runner == 'ubuntu-latest'
-        with:
-          name: nuget-tool
-          path: artifacts/nuget/*.nupkg
-          if-no-files-found: error
 
   standalone:
-    name: Pack and test (${{ matrix.rid }})
+    name: Build and test executable (${{ matrix.rid }})
     strategy:
       fail-fast: false
       matrix:
@@ -81,7 +57,7 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: '10.0.x'
-      - name: Build and smoke-test the archive
+      - name: Build and smoke-test the executable
         shell: pwsh
         env:
           RUNTIME: ${{ matrix.rid }}
@@ -92,51 +68,51 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: standalone-${{ matrix.rid }}
-          path: artifacts/*.zip
+          path: artifacts/standalone/
           if-no-files-found: error
 
   publish:
-    name: Publish NuGet and GitHub releases
+    name: Publish standalone executables
     if: github.event_name == 'push' && github.ref_type == 'tag' && github.repository == 'ajtn123/BaiduPCS.NET'
     needs: [build, standalone]
     runs-on: ubuntu-latest
     environment: release
     permissions:
       contents: write
-      id-token: write
     steps:
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          dotnet-version: '10.0.x'
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: nuget-tool
-          path: artifacts/nuget
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: standalone-*
           path: artifacts/release
           merge-multiple: true
-      - name: Create the release checksum manifest
+      - name: Verify and publish release assets
         working-directory: artifacts/release
-        run: |
-          test "$(find . -maxdepth 1 -name '*.zip' -type f | wc -l)" -eq 8
-          sha256sum "BaiduPCS.NET-$GITHUB_REF_NAME-"*.zip > SHA256SUMS
-          sha256sum --check SHA256SUMS
-      - name: Sign in to NuGet
-        id: nuget
-        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
-        with:
-          user: ${{ secrets.NUGET_USER }}
-      - name: Push the .NET tool to NuGet
-        env:
-          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
-        run: |
-          dotnet nuget push "artifacts/nuget/BaiduPCS.NET.${GITHUB_REF_NAME#v}.nupkg" \
-            --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
-      - name: Publish standalone archives
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" artifacts/release/*.zip artifacts/release/SHA256SUMS \
+          binaries=()
+          for rid in win-x64 win-arm64 osx-x64 osx-arm64 linux-x64 linux-arm64 linux-musl-x64 linux-musl-arm64; do
+            name="BaiduPCS.NET-$GITHUB_REF_NAME-$rid"
+            if [[ "$rid" == win-* ]]; then name="$name.exe"; fi
+            test -s "$name"
+            test -s "$name.runtime-notices.txt"
+            binaries+=("$name")
+          done
+          {
+            for notice in ../../LICENSE ../../THIRD-PARTY-NOTICES.md ../../licenses/*.txt; do
+              printf '\n=== %s ===\n\n' "${notice#../../}"
+              cat "$notice"
+            done
+            for name in "${binaries[@]}"; do
+              printf '\n=== .NET runtime notices for %s ===\n\n' "$name"
+              cat "$name.runtime-notices.txt"
+            done
+          } > LICENSES.txt
+          sha256sum "${binaries[@]}" LICENSES.txt > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" "${binaries[@]}" SHA256SUMS LICENSES.txt \
             --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest

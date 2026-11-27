@@ -52,7 +52,7 @@ internal sealed class ShellCommand : ProfileCommand<CommonSettings>
 
             if (args.Length == 0)
                 continue;
-            if (args is ["exit"])
+            if (args.Length == 1 && completions.CanonicalName(args[0]) == "exit")
                 return 0;
             if (args[0] == "shell")
             {
@@ -87,7 +87,8 @@ internal sealed class ShellCommand : ProfileCommand<CommonSettings>
         string[]? commands = completions.Matches(words);
         if (commands is not null)
             return commands.Select(word => line[..current.Start] + word + " ").ToArray();
-        if (profile.ActiveAccount is not { } account || !TakesRemotePaths(words) || current.Value.StartsWith('-'))
+        if (profile.ActiveAccount is not { } account
+            || !TakesRemotePaths(completions.CanonicalName(words[0].Value), words) || current.Value.StartsWith('-'))
             return [];
 
         int slash = current.Value.LastIndexOf('/');
@@ -118,7 +119,7 @@ internal sealed class ShellCommand : ProfileCommand<CommonSettings>
         }
     }
 
-    private static bool TakesRemotePaths(IReadOnlyList<ShellArgument> words) => words[0].Value switch
+    private static bool TakesRemotePaths(string command, IReadOnlyList<ShellArgument> words) => command switch
     {
         "cd" or "list" or "tree" or "metadata" or "match" or "mkdir" or "remove" or "copy" or "move" or "rename"
             or "download" or "download-links" or "upload" or "export" => words.Count > 1,
@@ -395,12 +396,22 @@ internal sealed class ExitCommand : Command<CommonSettings>
 internal sealed class ShellCompletions
 {
     private readonly Dictionary<string, List<string>> _commands = new(StringComparer.Ordinal) { [""] = ["help"] };
+    private readonly Dictionary<string, string> _aliases = new(StringComparer.Ordinal);
 
-    internal ICommandConfigurator Register<T>(IConfigurator config, string name) where T : class, ICommand
+    internal ICommandConfigurator Register<T>(IConfigurator config, string name, params string[] aliases) where T : class, ICommand
     {
+        ICommandConfigurator command = config.AddCommand<T>(name);
         _commands[""].Add(name);
-        return config.AddCommand<T>(name);
+        foreach (string alias in aliases)
+        {
+            command.WithAlias(alias);
+            _aliases.Add(alias, name);
+            _commands[""].Add(alias);
+        }
+        return command;
     }
+
+    internal string CanonicalName(string name) => _aliases.GetValueOrDefault(name, name);
 
     internal ICommandConfigurator Register<T>(IConfigurator<CommandSettings> config, string branch, string name)
         where T : class, ICommandLimiter<CommandSettings>

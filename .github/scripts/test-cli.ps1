@@ -38,6 +38,17 @@ try {
         throw 'The one-shot interface and shell returned different profile data.'
     }
 
+    $listHelp = (dotnet $cli ls --help) -join "`n"
+    $downloadHelp = (dotnet $cli d --help) -join "`n"
+    $cdHelp = (dotnet $cli cd --help) -join "`n"
+    if ($listHelp -notmatch '--json\b' -or $downloadHelp -notmatch '--output-directory\b' -or $cdHelp -notmatch '--list\b') {
+        throw 'A common command name did not resolve to the expected command.'
+    }
+    $shellHelp = (@('help ls', 'help d', 'quit', 'invalid-command') | dotnet $cli shell) -join "`n"
+    if ($shellHelp -notmatch '--json\b' -or $shellHelp -notmatch '--output-directory\b') {
+        throw 'Aliases did not resolve inside the shell.'
+    }
+
     @('account switch "Second account"', 'config reset') | dotnet $cli shell
     $path = dotnet $cli pwd
     if ($path -ne '/Second folder' -or (Get-FileHash -LiteralPath $legacy).Hash -ne $sourceHash) {
@@ -45,7 +56,7 @@ try {
     }
     Test-ClearConfirmation 'offline'
     Test-ClearConfirmation 'recycle'
-    Write-Host 'CLI profile import, one-shot and shell commands, persistence, and clear-all confirmation passed.'
+    Write-Host 'CLI aliases, profile import, one-shot and shell commands, persistence, and clear-all confirmation passed.'
 } finally {
     $env:BAIDUPCS_CONFIG_DIR = $originalProfile
 }

@@ -18,4 +18,4 @@ Spectre.Console, Spectre.Console.Ansi, and Spectre.Console.Cli are used for term
 
 ## Microsoft .NET
 
-Self-contained releases include a .NET runtime. Its license and third-party notices accompany those archives.
+Self-contained releases include a .NET runtime. The release's `LICENSES.txt` contains the runtime license and third-party notices.

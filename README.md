@@ -4,12 +4,20 @@ BaiduPCS.NET is a .NET 10 command-line client for Baidu Netdisk. It ports the wo
 
 ## Quick start
 
-Install the published .NET tool with the .NET 10 SDK.
+Download the standalone executable for your operating system and architecture. Each download contains the .NET runtime. On Windows, rename it to `baidupcs.exe` and run it from PowerShell. [GitHub releases](https://github.com/ajtn123/BaiduPCS.NET/releases/latest)
+
+```powershell
+.\baidupcs.exe --help
+```
+
+On macOS and Linux, rename the download to `baidupcs` and make it executable.
 
 ```sh
-dotnet tool install --global BaiduPCS.NET
-baidupcs --help
+chmod +x baidupcs
+./baidupcs --help
 ```
+
+Put the executable on your PATH to use the `baidupcs` commands below, or keep using its relative path.
 
 To run from source, build or run the CLI project with the .NET 10 SDK.
 
@@ -23,7 +31,7 @@ Import an existing BaiduPCS-Go profile, or sign in interactively.
 baidupcs account import-go
 baidupcs account current
 baidupcs quota
-baidupcs list /
+baidupcs ls /
 ```
 
 `account import-go` reads the existing profile and writes a separate BaiduPCS.NET profile. Pass the path to `pcs_config.json` for a portable installation. `account login` prompts for the username and password. To pass existing cookies from a credential source, use `account login --cookies-stdin`. BDUSS sign-in also accepts optional PTOKEN and STOKEN.
@@ -31,7 +39,7 @@ baidupcs list /
 ```sh
 baidupcs mkdir /example
 baidupcs upload ./notes.txt /example
-baidupcs download /example/notes.txt --output-directory ./downloads
+baidupcs d /example/notes.txt --output-directory ./downloads
 baidupcs shell
 ```
 
@@ -49,13 +57,13 @@ Run `baidupcs` in a terminal to enter the shell. Use `help`, Tab completion, and
 | Export and local tools | `checksum`, `export`, `tool encrypt`, `tool decrypt`, `tool ip`, `tool time`, `run -- EXECUTABLE ARG...` |
 | Check for updates | `update check`, `update apply` |
 
-Use `--help` on a command for all options. For more examples and Go command equivalents, see [Command reference and migration](docs/commands.md).
+Use `ls` or `ll` for `list`, `d` for `download`, and `u` for `upload`. `cd` changes the remote working directory. These names work in the interactive shell and in one-shot commands. For all options and aliases, see [Command reference and migration](docs/commands.md).
 
 ## Configuration and release builds
 
 `baidupcs env` shows the active profile path. Set `BAIDUPCS_CONFIG_DIR` to use a separate profile. The profile contains session credentials. Keep it in a user-private directory and keep it out of version control.
 
-Build and run the offline fixture tests with `dotnet build` and `dotnet test`. Release archives target Windows x64 and Arm64, macOS x64 and Arm64, and Linux x64 and Arm64 on glibc and musl. Android, iOS, FreeBSD, Linux x86, and MIPS are outside the release matrix. Use the published `SHA256SUMS` to verify an archive.
+Build and run the offline fixture tests with `dotnet build` and `dotnet test`. Release executables target Windows x64 and Arm64, macOS x64 and Arm64, and Linux x64 and Arm64 on glibc and musl. Android, iOS, FreeBSD, Linux x86, and MIPS are outside the release matrix. Use the published `SHA256SUMS` to verify the executable.
 
 Baidu can change or retire endpoints and restrict operations by account. Assisted verification with BaiduPCS-Go 4.0.1 confirmed profile import, quota, directory and file operations, bidirectional uploads and downloads, share creation and cancellation, and recycle restoration. It also confirmed offline task listing, query, and deletion.
 
@@ -65,7 +73,7 @@ Standalone rapid-link import was disabled in the pinned Go command. Checksum lin
 
 See [Architecture and API design](docs/architecture.md) for the implementation and verification details.
 
-Maintainers can find the CI and NuGet publishing setup in the [release guide](docs/release.md).
+Maintainers can find the CI and publishing steps in the [release guide](docs/release.md).
 
 ## License
 

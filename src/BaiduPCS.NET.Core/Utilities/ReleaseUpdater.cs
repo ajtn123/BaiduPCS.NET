@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -12,7 +11,7 @@ public sealed class ReleaseUpdater(HttpClient http)
 {
     public const string Repository = "ajtn123/BaiduPCS.NET";
     public const string ChecksumFile = "SHA256SUMS";
-    private const long MaximumArchiveSize = 512L * 1024 * 1024;
+    private const long MaximumExecutableSize = 512L * 1024 * 1024;
     private static readonly Uri LatestUrl = new($"https://api.github.com/repos/{Repository}/releases/latest");
 
     public async Task<StableRelease?> LatestAsync(CancellationToken cancellationToken = default)
@@ -54,37 +53,24 @@ public sealed class ReleaseUpdater(HttpClient http)
     {
         string target = Path.GetFullPath(executable);
         string fileName = OperatingSystem.IsWindows() ? "baidupcs.exe" : "baidupcs";
-        string archiveName = $"BaiduPCS.NET-{release.Tag}-{runtime}.zip";
-        if (!SupportedRuntime(runtime) || !release.Assets.Contains(archiveName) || !release.Assets.Contains(ChecksumFile))
-            throw new InvalidOperationException($"The release has no verified standalone archive for {runtime}.");
+        string extension = runtime.StartsWith("win-", StringComparison.Ordinal) ? ".exe" : "";
+        string assetName = $"BaiduPCS.NET-{release.Tag}-{runtime}{extension}";
+        if (!SupportedRuntime(runtime) || !release.Assets.Contains(assetName) || !release.Assets.Contains(ChecksumFile))
+            throw new InvalidOperationException($"The release has no verified standalone executable for {runtime}.");
 
         string manifest = await ReadManifestAsync(AssetUri(release, ChecksumFile), cancellationToken);
-        byte[] expected = ReadArchiveHash(manifest, archiveName);
+        byte[] expected = ReadAssetHash(manifest, assetName);
         string stage = Path.Combine(Path.GetDirectoryName(target)!, ".baidupcs-update-" + Guid.NewGuid().ToString("N"));
         if (OperatingSystem.IsWindows())
             Directory.CreateDirectory(stage);
         else
             Directory.CreateDirectory(stage, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
-        string zipPath = Path.Combine(stage, "release.zip");
         string binary = Path.Combine(stage, fileName);
         bool ready = false;
         try
         {
-            await DownloadArchiveAsync(AssetUri(release, archiveName), zipPath, expected, cancellationToken);
-            await using (FileStream archive = File.OpenRead(zipPath))
-            using (var zip = new ZipArchive(archive, ZipArchiveMode.Read))
-            {
-                ZipArchiveEntry[] candidates = zip.Entries.Where(entry => entry.FullName == fileName).ToArray();
-                if (candidates.Length != 1 || candidates[0].Length is <= 0 or > MaximumArchiveSize)
-                    throw new InvalidDataException("The release archive does not contain the expected executable.");
-
-                await using Stream source = candidates[0].Open();
-                await using var staged = new FileStream(binary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                    128 * 1024, FileOptions.Asynchronous);
-                await CopyBoundedAsync(source, staged, MaximumArchiveSize, cancellationToken);
-                staged.Flush(flushToDisk: true);
-            }
+            await DownloadExecutableAsync(AssetUri(release, assetName), binary, expected, cancellationToken);
 
             if (!OperatingSystem.IsWindows())
                 File.SetUnixFileMode(binary, File.GetUnixFileMode(target));
@@ -93,7 +79,6 @@ public sealed class ReleaseUpdater(HttpClient http)
         }
         finally
         {
-            File.Delete(zipPath);
             if (!ready)
             {
                 File.Delete(binary);
@@ -114,22 +99,22 @@ public sealed class ReleaseUpdater(HttpClient http)
         return backup;
     }
 
-    internal static byte[] ReadArchiveHash(string manifest, string archiveName)
+    internal static byte[] ReadAssetHash(string manifest, string assetName)
     {
         string? hash = null;
         foreach (string line in manifest.Split('\n'))
         {
             string trimmed = line.Trim();
             int separator = trimmed.IndexOfAny([' ', '\t']);
-            if (separator < 0 || !trimmed[(separator + 1)..].TrimStart().TrimStart('*').Equals(archiveName, StringComparison.Ordinal))
+            if (separator < 0 || !trimmed[(separator + 1)..].TrimStart().TrimStart('*').Equals(assetName, StringComparison.Ordinal))
                 continue;
             if (hash is not null || separator != 64 || !trimmed[..separator].All(char.IsAsciiHexDigit))
-                throw new InvalidDataException("The release checksum manifest contains an invalid or duplicate archive entry.");
+                throw new InvalidDataException("The release checksum manifest contains an invalid or duplicate entry.");
 
             hash = trimmed[..separator];
         }
 
-        return hash is null ? throw new InvalidDataException("The release checksum manifest does not list this archive.")
+        return hash is null ? throw new InvalidDataException("The release checksum manifest does not list this executable.")
             : Convert.FromHexString(hash);
     }
 
@@ -143,17 +128,20 @@ public sealed class ReleaseUpdater(HttpClient http)
         return System.Text.Encoding.UTF8.GetString(content.ToArray());
     }
 
-    private async Task DownloadArchiveAsync(Uri uri, string path, byte[] expected, CancellationToken token)
+    private async Task DownloadExecutableAsync(Uri uri, string path, byte[] expected, CancellationToken token)
     {
         using HttpResponseMessage response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token);
         response.EnsureSuccessStatusCode();
         await using Stream content = await response.Content.ReadAsStreamAsync(token);
         await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 128 * 1024, FileOptions.Asynchronous);
-        await CopyBoundedAsync(content, file, MaximumArchiveSize, token);
+        await CopyBoundedAsync(content, file, MaximumExecutableSize, token);
+        if (file.Length == 0)
+            throw new InvalidDataException("The downloaded executable is empty.");
         file.Position = 0;
         byte[] actual = await SHA256.HashDataAsync(file, token);
         if (!CryptographicOperations.FixedTimeEquals(actual, expected))
-            throw new InvalidDataException("The downloaded archive does not match the published SHA-256 checksum.");
+            throw new InvalidDataException("The downloaded executable does not match the published SHA-256 checksum.");
+        file.Flush(flushToDisk: true);
     }
 
     private static async Task CopyBoundedAsync(Stream input, Stream output, long maximum, CancellationToken token)
