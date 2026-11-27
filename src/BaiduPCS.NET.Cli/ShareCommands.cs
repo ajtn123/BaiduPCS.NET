@@ -65,7 +65,7 @@ internal sealed class CancelShareCommand : RemoteCommand<IdSettings>
     {
         var (_, client) = await OpenAsync(settings, cancellationToken);
         using (client)
-            return await ExecuteEachAsync(settings.Ids.Distinct(), id => $"Canceled share {id}",
+            return await ExecuteEachAsync(settings, settings.Ids.Distinct(), id => $"Canceled share {id}",
                 id => client.CancelShareAsync(id, cancellationToken), cancellationToken);
     }
 }
@@ -105,7 +105,8 @@ internal sealed class ImportShareCommand : RemoteCommand<ImportShareCommand.Sett
             return 0;
 
         await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
-        return await Program.RunAsync(["download", .. saved], cancellationToken);
+        string[] options = settings.RawNumbers ? ["--raw-numbers"] : [];
+        return await Program.RunAsync(["download", .. options, .. saved], cancellationToken);
     }
 }
 

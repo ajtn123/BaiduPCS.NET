@@ -43,25 +43,32 @@ internal abstract class RemoteCommand<TSettings> : ProfileCommand<TSettings> whe
         return [.. paths];
     }
 
-    protected static async Task<int> ExecuteEachAsync<T>(IEnumerable<T> items, Func<T, string> describe,
+    protected static async Task<int> ExecuteEachAsync<T>(CommonSettings settings, IEnumerable<T> items, Func<T, string> describe,
         Func<T, Task> action, CancellationToken token)
     {
+        var display = new OperationDisplay(settings, "Item");
         int exitCode = 0;
-        foreach (T item in items)
+        await display.RunAsync(async () =>
         {
-            token.ThrowIfCancellationRequested();
-            try
+            foreach (T item in items)
             {
-                await action(item);
-                Console.WriteLine(describe(item));
+                token.ThrowIfCancellationRequested();
+                string name = describe(item);
+                OperationDisplay.Item row = display.Begin(name);
+                try
+                {
+                    await action(item);
+                    display.End(row, "Done", plain: name);
+                }
+                catch (Exception error) when (error is BaiduApiException or HttpRequestException or InvalidDataException
+                    || error is OperationCanceledException && !token.IsCancellationRequested)
+                {
+                    string failure = error is HttpRequestException ? "Baidu request failed." : error.Message;
+                    display.End(row, failure, failed: true, plain: $"{name}: {failure}");
+                    exitCode = 1;
+                }
             }
-            catch (Exception error) when (error is BaiduApiException or HttpRequestException or InvalidDataException
-                || error is OperationCanceledException && !token.IsCancellationRequested)
-            {
-                Console.Error.WriteLine($"{describe(item)}: {(error is HttpRequestException ? "Baidu request failed." : error.Message)}");
-                exitCode = 1;
-            }
-        }
+        });
 
         return exitCode;
     }
@@ -75,7 +82,8 @@ internal sealed class QuotaCommand : RemoteCommand<CommonSettings>
         using (client)
         {
             Quota quota = await client.GetQuotaAsync(cancellationToken);
-            Console.WriteLine($"Total: {quota.Total} bytes\nUsed: {quota.Used} bytes\nFree: {quota.Free} bytes");
+            var numbers = new DisplayNumbers(settings.RawNumbers);
+            Console.WriteLine($"Total: {numbers.Bytes(quota.Total)}\nUsed: {numbers.Bytes(quota.Used)}\nFree: {numbers.Bytes(quota.Free)}");
         }
 
         return 0;
@@ -113,7 +121,7 @@ internal sealed class ListFilesCommand : RemoteCommand<ListFilesCommand.Settings
         {
             string path = await client.MatchOneAsync(account.WorkingDirectory, settings.Path, cancellationToken);
             FileOutput.Write(await client.ListAsync(path, settings.Sort, settings.Descending, cancellationToken)
-                .ToArrayAsync(cancellationToken), settings.Totals, json: settings.Json);
+                .ToArrayAsync(cancellationToken), settings.Totals, json: settings.Json, raw: settings.RawNumbers);
         }
 
         return 0;
@@ -148,7 +156,8 @@ internal sealed class ChangeDirectoryCommand : RemoteCommand<ChangeDirectoryComm
                 profile.RequireAccount().WorkingDirectory = path;
             }, cancellationToken);
             if (settings.List)
-                FileOutput.Write(await client.ListAsync(path, cancellationToken: cancellationToken).ToArrayAsync(cancellationToken));
+                FileOutput.Write(await client.ListAsync(path, cancellationToken: cancellationToken).ToArrayAsync(cancellationToken),
+                    raw: settings.RawNumbers);
         }
 
         return 0;
@@ -182,7 +191,7 @@ internal sealed class SearchFilesCommand : RemoteCommand<SearchFilesCommand.Sett
         {
             string path = await client.MatchOneAsync(account.WorkingDirectory, settings.Path, cancellationToken);
             FileOutput.Write(await client.SearchAsync(path, settings.Keyword, settings.Recursive, cancellationToken),
-                settings.Totals, fullPaths: true, json: settings.Json);
+                settings.Totals, fullPaths: true, json: settings.Json, raw: settings.RawNumbers);
         }
 
         return 0;
@@ -213,7 +222,7 @@ internal sealed class MetadataCommand : RemoteCommand<MetadataCommand.Settings>
         {
             string[] paths = await ExpandAsync(client, account, settings.Paths.Length == 0 ? ["."] : settings.Paths, cancellationToken);
             IReadOnlyList<RemoteEntry> entries = await client.GetMetadataAsync(paths, cancellationToken);
-            FileOutput.Write(entries, details: true, fullPaths: true, json: settings.Json);
+            FileOutput.Write(entries, details: true, fullPaths: true, json: settings.Json, raw: settings.RawNumbers);
             string[] missing = paths.Except(entries.Select(entry => entry.Path), StringComparer.Ordinal).ToArray();
             foreach (string path in missing)
                 Console.Error.WriteLine($"No metadata returned for {path}.");
@@ -296,7 +305,7 @@ internal sealed class CreateDirectoryCommand : RemoteCommand<RemotePaths>
         using (client)
         {
             string[] paths = settings.Paths.Select(path => RemotePath.Resolve(account.WorkingDirectory, path)).Distinct().ToArray();
-            return await ExecuteEachAsync(paths, path => path, path => client.CreateDirectoryAsync(path, cancellationToken), cancellationToken);
+            return await ExecuteEachAsync(settings, paths, path => path, path => client.CreateDirectoryAsync(path, cancellationToken), cancellationToken);
         }
     }
 }
@@ -312,7 +321,7 @@ internal sealed class RemoveFilesCommand : RemoteCommand<RemotePaths>
             if (paths.Contains("/", StringComparer.Ordinal))
                 throw new ArgumentException("The remote root cannot be removed.");
 
-            return await ExecuteEachAsync(paths, path => path, path => client.RemoveAsync(path, cancellationToken), cancellationToken);
+            return await ExecuteEachAsync(settings, paths, path => path, path => client.RemoveAsync(path, cancellationToken), cancellationToken);
         }
     }
 }
@@ -337,7 +346,7 @@ internal abstract class RelocateFilesCommand(bool copy, bool rename = false) : R
                 if (sources.Length != 1 || destination.Contains('/') || destination is "" or "." or "..")
                     throw new ArgumentException("Rename requires one source and a new name within the same directory.");
 
-                return await ExecuteEachAsync(sources, _ => $"{sources[0]} -> {destination}",
+                return await ExecuteEachAsync(settings, sources, _ => $"{sources[0]} -> {destination}",
                     path => client.MoveAsync(path, RemotePath.Resolve(RemotePath.Parent(path), destination), cancellationToken), cancellationToken);
             }
 
@@ -357,7 +366,7 @@ internal abstract class RelocateFilesCommand(bool copy, bool rename = false) : R
                 || operations.Any(item => item.Target == item.Source || item.Target.StartsWith(item.Source + '/', StringComparison.Ordinal)))
                 throw new ArgumentException("The sources and destination resolve to conflicting paths.");
 
-            return await ExecuteEachAsync(operations, item => $"{item.Source} -> {item.Target}",
+            return await ExecuteEachAsync(settings, operations, item => $"{item.Source} -> {item.Target}",
                 item => copy ? client.CopyAsync(item.Source, item.Target, cancellationToken)
                     : client.MoveAsync(item.Source, item.Target, cancellationToken), cancellationToken);
         }
@@ -372,7 +381,8 @@ internal static class FileOutput
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    internal static void Write(IReadOnlyCollection<RemoteEntry> entries, bool details = false, bool fullPaths = false, bool json = false)
+    internal static void Write(IReadOnlyCollection<RemoteEntry> entries, bool details = false, bool fullPaths = false,
+        bool json = false, bool raw = false)
     {
         if (json)
         {
@@ -380,14 +390,15 @@ internal static class FileOutput
             return;
         }
 
-        var table = new Table().AddColumns("Name", "Bytes", "Modified");
+        var numbers = new DisplayNumbers(raw);
+        var table = new Table().AddColumns("Name", raw ? "Bytes" : "Size", "Modified");
         if (details)
             table.AddColumns("File ID", "App ID", "Created", "MD5", "Blocks");
 
         foreach (RemoteEntry entry in entries)
         {
             string name = (fullPaths ? entry.Path : entry.Name) + (entry.IsDirectory && entry.Path != "/" ? "/" : "");
-            string[] row = [Markup.Escape(name), entry.IsDirectory ? "-" : entry.Size.ToString(CultureInfo.InvariantCulture),
+            string[] row = [Markup.Escape(name), entry.IsDirectory ? "-" : numbers.Bytes(entry.Size, unit: false),
                 entry.Modified.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)];
             if (details)
                 row = [.. row, entry.Id.ToString(CultureInfo.InvariantCulture), entry.AppId.ToString(CultureInfo.InvariantCulture),
@@ -399,6 +410,6 @@ internal static class FileOutput
 
         AnsiConsole.Write(table);
         Console.WriteLine($"Files: {entries.Count(entry => !entry.IsDirectory)}, directories: {entries.Count(entry => entry.IsDirectory)}, "
-            + $"{entries.Where(entry => !entry.IsDirectory).Sum(entry => entry.Size)} bytes");
+            + numbers.Bytes(entries.Where(entry => !entry.IsDirectory).Sum(entry => entry.Size)));
     }
 }

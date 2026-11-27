@@ -49,14 +49,15 @@ public sealed class ReleaseUpdater(HttpClient http)
     }
 
     public async Task<string> StageStandaloneAsync(StableRelease release, string runtime, string executable,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool frameworkDependent = false)
     {
         string target = Path.GetFullPath(executable);
         string fileName = OperatingSystem.IsWindows() ? "baidupcs.exe" : "baidupcs";
         string extension = runtime.StartsWith("win-", StringComparison.Ordinal) ? ".exe" : "";
-        string assetName = $"BaiduPCS.NET-{release.Tag}-{runtime}{extension}";
+        string flavor = frameworkDependent ? "-framework-dependent" : "";
+        string assetName = $"BaiduPCS.NET-{release.Tag}-{runtime}{flavor}{extension}";
         if (!SupportedRuntime(runtime) || !release.Assets.Contains(assetName) || !release.Assets.Contains(ChecksumFile))
-            throw new InvalidOperationException($"The release has no verified standalone executable for {runtime}.");
+            throw new InvalidOperationException($"The release has no verified {(frameworkDependent ? "framework-dependent" : "self-contained")} executable for {runtime}.");
 
         string manifest = await ReadManifestAsync(AssetUri(release, ChecksumFile), cancellationToken);
         byte[] expected = ReadAssetHash(manifest, assetName);

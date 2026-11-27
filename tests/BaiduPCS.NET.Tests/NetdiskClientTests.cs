@@ -64,8 +64,9 @@ public sealed class NetdiskClientTests
 
             Assert.Equal("/share/transfer", uri.AbsolutePath);
             Assert.Equal(HttpMethod.Post, request.Method);
-            Assert.Contains("filename=report%20file.txt", uri.Query);
-            Assert.Contains("shareid=64&from=44", uri.Query);
+            Assert.Contains("filename=report+file.txt", uri.Query);
+            Assert.Contains("shareid=64", uri.Query);
+            Assert.Contains("from=44", uri.Query);
             string body = await request.Content!.ReadAsStringAsync(token);
             Assert.Equal("fsidlist=%5B9%5D&path=%2Fshared+files", body);
             return Json(new { info = new[] { new { path = "/shared files/report file.txt" } } });
@@ -80,7 +81,29 @@ public sealed class NetdiskClientTests
     }
 
     [Fact]
-    public async Task RefreshesAnExpiredDirectLinkBeforeRetrying()
+    public async Task ReportsTheBaiduErrorCodeFromAForbiddenDownload()
+    {
+        using var handler = new FixtureHandler((_, _) => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("{\"error_code\":31326,\"error_msg\":\"untrusted response text\"}"),
+        });
+        using var client = Client(handler);
+        var entry = new RemoteEntry(1, 0, "/file", "file", false, 10,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "", []);
+        var options = new DownloadOptions { Mode = DownloadMode.Pcs, TestOnly = true, Retries = 0 };
+
+        BaiduApiException error = await Assert.ThrowsAsync<BaiduApiException>(() => client.DownloadAsync(entry, "unused",
+            options, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.Forbidden, error.Status);
+        Assert.Equal(31326, error.Code);
+        Assert.DoesNotContain("untrusted", error.Message);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RefreshesAnExpiredDirectLinkBeforeRetrying(bool hasBaiduError)
     {
         int discoveries = 0;
         using var handler = new FixtureHandler((request, _) =>
@@ -89,12 +112,17 @@ public sealed class NetdiskClientTests
             if (uri.Query.Contains("method=locatedownload", StringComparison.Ordinal))
                 return Json(new { urls = new[] { new { url = $"https://example.com/{++discoveries}", encrypt = 0 } } });
             if (uri.AbsolutePath == "/1")
-                return new HttpResponseMessage(HttpStatusCode.Forbidden);
+                return new HttpResponseMessage(HttpStatusCode.Forbidden)
+                {
+                    Content = hasBaiduError ? new StringContent("{\"error_code\":31326}") : null,
+                };
 
             RangeItemHeaderValue range = Assert.Single(request.Headers.Range!.Ranges);
-            byte[] bytes = range.To == 0 ? [42] : [42, 43];
+            Assert.Equal(0, range.From);
+            Assert.Contains(range.To, new long?[] { 32767, 1 });
+            byte[] bytes = [42, 43];
             var response = new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new ByteArrayContent(bytes) };
-            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, range.To!.Value, 2);
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, 1, 2);
             return response;
         });
         using var client = new NetdiskClient(new ClientSettings(), new Account
@@ -279,7 +307,7 @@ public sealed class NetdiskClientTests
     [Fact]
     public async Task ResumesCompletedRangesAfterARequestFails()
     {
-        const int firstRange = 8 * 1024 * 1024;
+        const int firstRange = 256 * 1024;
         const int length = firstRange + 3;
         string directory = Directory.CreateTempSubdirectory("baidupcs-test-").FullName;
         try
@@ -314,7 +342,7 @@ public sealed class NetdiskClientTests
             ranges.Clear();
             Assert.True(await client.DownloadAsync(entry, destination, options, cancellationToken: TestContext.Current.CancellationToken));
 
-            Assert.Equal([(0L, 0L), (firstRange, length - 1L)], ranges);
+            Assert.Equal([(0L, 32767L), (firstRange, length - 1L)], ranges);
             byte[] contents = await File.ReadAllBytesAsync(destination, TestContext.Current.CancellationToken);
             Assert.Equal(length, contents.Length);
             Assert.Equal(3, contents[firstRange - 1]);
@@ -326,17 +354,22 @@ public sealed class NetdiskClientTests
         }
     }
 
-    [Fact]
-    public async Task TestDownloadReadsTheStreamWithoutCreatingOutput()
+    [Theory]
+    [InlineData(DownloadMode.Pcs, "")]
+    [InlineData(DownloadMode.Stream, "")]
+    [InlineData(DownloadMode.Pcs, "fixture-agent/1.0")]
+    public async Task TestDownloadHonorsThePcsUserAgentWithoutCreatingOutput(DownloadMode mode, string pcsUserAgent)
     {
-        using var handler = new FixtureHandler((_, _) => new HttpResponseMessage(HttpStatusCode.OK)
+        using var handler = new FixtureHandler((request, _) =>
         {
-            Content = new ByteArrayContent([1, 2, 3]),
+            Assert.Equal(pcsUserAgent, request.Headers.UserAgent.ToString());
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) };
         });
-        using var client = Client(handler);
+        using var client = new NetdiskClient(new ClientSettings { PcsUserAgent = pcsUserAgent },
+            new Account { Id = 1, Name = "Fixture" }, handler);
         var entry = new RemoteEntry(2, 1, "/file", "file", false, 3, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "", []);
         string target = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "file");
-        Assert.True(await client.DownloadAsync(entry, target, new DownloadOptions { TestOnly = true, Mode = DownloadMode.Stream },
+        Assert.True(await client.DownloadAsync(entry, target, new DownloadOptions { TestOnly = true, Mode = mode },
             cancellationToken: TestContext.Current.CancellationToken));
         Assert.False(Directory.Exists(Path.GetDirectoryName(target)));
         Assert.Equal(2, handler.Count);
@@ -434,7 +467,8 @@ public sealed class NetdiskClientTests
             Assert.Equal("/rest/2.0/pcs/file", request.RequestUri!.AbsolutePath);
             Assert.Contains("method=list", request.RequestUri.Query);
             Assert.Contains("path=%2Fdocs", request.RequestUri.Query);
-            Assert.Contains("by=size&order=desc", request.RequestUri.Query);
+            Assert.Contains("by=size", request.RequestUri.Query);
+            Assert.Contains("order=desc", request.RequestUri.Query);
             return Json(new { list = new[] { Entry(1, "/docs/report.txt") } });
         });
         using var client = Client(handler);

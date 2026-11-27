@@ -20,12 +20,15 @@ public sealed class ReleaseUpdaterTests
     }
 
     [Theory]
-    [InlineData("win-x64", ".exe")]
-    [InlineData("linux-musl-arm64", "")]
-    public async Task VerifiesStagesAndReplacesTheRuntimeExecutableWithRollback(string runtime, string extension)
+    [InlineData("win-x64", ".exe", false)]
+    [InlineData("win-x64", ".exe", true)]
+    [InlineData("linux-musl-arm64", "", false)]
+    [InlineData("linux-musl-arm64", "", true)]
+    public async Task VerifiesStagesAndReplacesTheRuntimeExecutableWithRollback(string runtime, string extension, bool frameworkDependent)
     {
         string fileName = OperatingSystem.IsWindows() ? "baidupcs.exe" : "baidupcs";
-        string assetName = $"BaiduPCS.NET-v1.2.3-{runtime}{extension}";
+        string flavor = frameworkDependent ? "-framework-dependent" : "";
+        string assetName = $"BaiduPCS.NET-v1.2.3-{runtime}{flavor}{extension}";
         byte[] executable = "replacement"u8.ToArray();
         string checksum = Convert.ToHexStringLower(SHA256.HashData(executable));
         using var http = Fixture(assetName, executable, checksum);
@@ -37,7 +40,8 @@ public sealed class ReleaseUpdaterTests
         {
             string target = Path.Combine(directory, fileName);
             File.WriteAllText(target, "previous");
-            string staged = await updater.StageStandaloneAsync(release, runtime, target, TestContext.Current.CancellationToken);
+            string staged = await updater.StageStandaloneAsync(release, runtime, target, TestContext.Current.CancellationToken,
+                frameworkDependent: frameworkDependent);
             Assert.Equal("previous", File.ReadAllText(target));
             string backup = ReleaseUpdater.ReplaceStandalone(target, staged);
             Assert.Equal("replacement", File.ReadAllText(target));

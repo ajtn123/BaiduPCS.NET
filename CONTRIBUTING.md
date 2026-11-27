@@ -1,6 +1,6 @@
 # Contributing to BaiduPCS.NET
 
-Use the .NET 10 SDK. Run the CLI and offline tests from the repository root.
+Use an installed .NET SDK that can target `net10.0`. Run the CLI and offline tests from the repository root.
 
 ```sh
 dotnet restore BaiduPCS.NET.slnx --locked-mode

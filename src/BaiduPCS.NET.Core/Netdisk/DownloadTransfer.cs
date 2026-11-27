@@ -10,7 +10,7 @@ namespace BaiduPCS.Netdisk;
 
 public sealed partial class NetdiskClient
 {
-    private const long MinimumRangeSize = 8 * 1024 * 1024;
+    private const int ProbeSize = 32 * 1024;
     private const int MaxRanges = 10_000;
     private TransferRate? _downloadRate;
 
@@ -39,7 +39,8 @@ public sealed partial class NetdiskClient
             }
             catch (Exception error) when (attempt < options.Retries && !cancellationToken.IsCancellationRequested
                 && (error is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-                    or HttpStatusCode.NotFound or HttpStatusCode.Gone } || error is InvalidDataException && addresses.Count > 1))
+                    or HttpStatusCode.NotFound or HttpStatusCode.Gone } or BaiduApiException { Status: HttpStatusCode.Forbidden }
+                    || error is InvalidDataException && addresses.Count > 1))
             {
                 if (preferred + 1 < addresses.Count)
                     preferred++;
@@ -141,10 +142,10 @@ public sealed partial class NetdiskClient
     private async Task<bool> ProbeAsync(long size, Uri uri, DownloadOptions options, TransferRate rate, CancellationToken token) =>
         await WithRetriesAsync(async attemptToken =>
         {
-            using HttpResponseMessage probe = await SendDownloadAsync(uri, options.Mode, 0, 0, attemptToken);
+            using HttpResponseMessage probe = await SendDownloadAsync(uri, options.Mode, 0, ProbeSize - 1, attemptToken);
             if (probe.StatusCode == HttpStatusCode.PartialContent)
             {
-                ValidateRange(probe, 0, 0, size);
+                ValidateRange(probe, 0, Math.Min(size, ProbeSize) - 1, size);
                 return true;
             }
 
@@ -184,7 +185,15 @@ public sealed partial class NetdiskClient
     private async Task DownloadRangesAsync(RemoteEntry entry, Uri uri, DownloadOptions options, FileStream? file,
         string? statePath, TransferRate rate, Action<DownloadProgress>? progress, CancellationToken token)
     {
-        long rangeSize = Math.Max(MinimumRangeSize, (entry.Size - 1) / MaxRanges + 1);
+        const long mib = 1024 * 1024;
+        long blockSize = entry.Size switch
+        {
+            < 5 * mib => 256 * 1024,
+            < 10 * mib => 512 * 1024,
+            < 15 * mib => mib,
+            _ => 4 * mib,
+        };
+        long rangeSize = Math.Max(blockSize, (entry.Size - 1) / MaxRanges + 1);
         int rangeCount = checked((int)((entry.Size - 1) / rangeSize + 1));
         var identity = new DownloadIdentity(1, _account.Id, entry.Id, entry.Path, entry.Size, entry.Modified, entry.Md5, rangeSize);
         var completed = new bool[rangeCount];
@@ -206,7 +215,7 @@ public sealed partial class NetdiskClient
                 transferred += Math.Min(rangeSize, entry.Size - index * rangeSize);
         }
         if (transferred != 0)
-            progress?.Invoke(new DownloadProgress(transferred, entry.Size, null));
+            progress?.Invoke(new DownloadProgress(transferred, entry.Size, null) { Resumed = true });
 
         using var stateLock = new SemaphoreSlim(1);
         var parallel = new ParallelOptions { MaxDegreeOfParallelism = options.Parallel, CancellationToken = token };
@@ -249,14 +258,57 @@ public sealed partial class NetdiskClient
         });
     }
 
-    private Task<HttpResponseMessage> SendDownloadAsync(Uri uri, DownloadMode mode, long? from, long? to, CancellationToken token) =>
-        _transport.SendAsync(HttpMethod.Get, uri, mode == DownloadMode.Direct, token, configure: request =>
+    private async Task<HttpResponseMessage> SendDownloadAsync(Uri uri, DownloadMode mode, long? from, long? to, CancellationToken token)
+    {
+        HttpResponseMessage response = await _transport.SendAsync(HttpMethod.Get, uri, mode == DownloadMode.Direct, token, configure: request =>
         {
-            request.Headers.AcceptEncoding.Clear();
-            request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("identity"));
+            // The Go client omits User-Agent on PCS and stream downloads when no PCS agent is configured.
+            if (mode != DownloadMode.Direct && _settings.PcsUserAgent.Length == 0)
+                request.Headers.Remove("User-Agent");
             if (from.HasValue)
                 request.Headers.Range = new RangeHeaderValue(from, to);
-        });
+        }, rawDownload: from.HasValue);
+        if (response.StatusCode != HttpStatusCode.Forbidden)
+            return response;
+
+        using (response)
+        {
+            int code = await ReadDownloadErrorCodeAsync(response.Content, token);
+            if (code != 0)
+                throw new BaiduApiException("download", code, response.StatusCode);
+            throw new HttpRequestException("Download request was forbidden.", null, response.StatusCode);
+        }
+    }
+
+    private static async Task<int> ReadDownloadErrorCodeAsync(HttpContent content, CancellationToken token)
+    {
+        const int maximum = 4096;
+        if (content.Headers.ContentLength > maximum)
+            return 0;
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            // Baidu also sends JSON error bodies labeled text/plain.
+            var buffer = new byte[maximum + 1];
+            await using Stream body = await content.ReadAsStreamAsync(timeout.Token);
+            int count = await body.ReadAtLeastAsync(buffer, buffer.Length, false, timeout.Token);
+            if (count > maximum)
+                return 0;
+
+            using JsonDocument json = JsonDocument.Parse(buffer.AsMemory(0, count));
+            long code = json.RootElement.Number("error_code");
+            if (code == 0)
+                code = json.RootElement.Number("errno");
+            return code is >= int.MinValue and <= int.MaxValue ? (int)code : 0;
+        }
+        catch (Exception error) when (error is IOException or HttpRequestException or JsonException
+            || error is OperationCanceledException && !token.IsCancellationRequested)
+        {
+            return 0;
+        }
+    }
 
     private async Task CopyDownloadAsync(HttpResponseMessage response, FileStream? destination, long start, long expected,
         TransferRate rate, int? range, Action<DownloadProgress>? progress, CancellationToken token)

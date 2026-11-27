@@ -41,6 +41,8 @@ baidupcs export /backup --recursive --root /restored --stdout
 
 Direct download is the default. If it is unavailable for the account or region, try `--mode pcs` or `--mode stream`. `--link-index` is zero-based. `--test` reads the data without creating local output. Verification uses metadata hashes where suitable and always validates transfer length. An existing destination is skipped unless `--overwrite` is set.
 
+Downloads and uploads show an updating table in the shell and in one-shot terminal commands. Each active file has its own progress bar. Narrow terminals show fewer columns. The speed and ETA use an average over the last 60 seconds, or the time transferred so far for a new file. Use `--worker-status` for download worker details. Redirected commands show plain results. Use `--raw-numbers` for exact byte counts and durations in seconds, and `--json` on supported commands for machine-readable output.
+
 Directory listing uses the paged Pan endpoint. When Pan rejects the session, the client can fall back to the older PCS listing used by BaiduPCS-Go 4.0.1. If PCS reaches its 1,000-entry limit, sign in with Pan session cookies for a complete listing.
 
 The default save directory contains a subdirectory named for the active account. Set `download-prefix=` to save directly to the configured directory, or `download-prefix=shared` for a shared subdirectory. Use `download-prefix=@account` to restore the per-account layout. `network-family=prefer-ipv6` tries IPv6 first and falls back to IPv4. `network-family=ipv4` restricts connections to IPv4.

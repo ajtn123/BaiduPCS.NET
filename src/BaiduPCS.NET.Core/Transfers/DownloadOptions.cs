@@ -15,4 +15,7 @@ public sealed record DownloadOptions
     public bool Executable { get; init; }
 }
 
-public sealed record DownloadProgress(long CompletedBytes, long TotalBytes, int? Range);
+public sealed record DownloadProgress(long CompletedBytes, long TotalBytes, int? Range)
+{
+    public bool Resumed { get; init; }
+}
