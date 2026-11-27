@@ -28,6 +28,8 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 | `tool showtime`, `getip`, `enc`, `dec` | `tool time`, `tool ip`, `tool encrypt`, `tool decrypt` | Encrypt and decrypt accept `--method`, `--key-stdin`, `--no-gzip`, `--remove-source`, and `--overwrite`. |
 | `update` | `update check`, `update apply` | `apply --yes` skips the prompt. Use `--scope global`, `--scope local`, or `--tool-path PATH` for a .NET tool. A standalone executable updates its matching archive and retains `.previous`. |
 
+On Windows, a helper installs the standalone update after the current process exits. The next launch clears the helper from a completed update. To roll back, close BaiduPCS.NET and restore the `.previous` file to the executable's original name.
+
 ## Transfer examples
 
 ```sh

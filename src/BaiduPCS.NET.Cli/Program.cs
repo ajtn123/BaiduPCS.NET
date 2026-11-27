@@ -28,6 +28,10 @@ internal static class Program
             if (args.Length > 0 && args[0] == ApplyUpdateCommand.HelperCommand)
                 return await ApplyUpdateCommand.FinishWindowsUpdateAsync(args, shutdown.Token);
 
+#if BAIDUPCS_STANDALONE
+            if (OperatingSystem.IsWindows() && Environment.ProcessPath is { } executable)
+                ApplyUpdateCommand.RemoveCompletedWindowsStages(Path.GetDirectoryName(executable)!);
+#endif
             return await RunAsync(args.Length == 0
                 ? [!Console.IsInputRedirected && !Console.IsOutputRedirected ? "shell" : "--help"] : args, shutdown.Token);
         }

@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using BaiduPCS.Cli;
 using BaiduPCS.Utilities;
 
 namespace BaiduPCS.Tests;
@@ -45,6 +46,42 @@ public sealed class ReleaseUpdaterTests
         finally
         {
             Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RemovesOnlyTheFinishedWindowsUpdateHelper()
+    {
+        string directory = Directory.CreateTempSubdirectory("baidupcs-release-fixture-").FullName;
+        try
+        {
+            string finished = CreateStage();
+            string pending = CreateStage();
+            string failed = CreateStage();
+            string unrelated = CreateStage(".baidupcs-update-not-a-guid");
+            string backup = Path.Combine(directory, "baidupcs.exe.previous");
+            File.WriteAllText(Path.Combine(pending, "baidupcs.exe"), "replacement");
+            File.WriteAllText(Path.Combine(failed, "error.txt"), "failure");
+            File.WriteAllText(backup, "rollback");
+
+            ApplyUpdateCommand.RemoveCompletedWindowsStages(directory);
+
+            Assert.False(Directory.Exists(finished));
+            Assert.True(Directory.Exists(pending));
+            Assert.True(Directory.Exists(failed));
+            Assert.True(Directory.Exists(unrelated));
+            Assert.Equal("rollback", File.ReadAllText(backup));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+
+        string CreateStage(string? name = null)
+        {
+            string stage = Directory.CreateDirectory(Path.Combine(directory, name ?? $".baidupcs-update-{Guid.NewGuid():N}")).FullName;
+            File.WriteAllText(Path.Combine(stage, "baidupcs-update-helper.exe"), "helper");
+            return stage;
         }
     }
 

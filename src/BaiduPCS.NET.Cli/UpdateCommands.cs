@@ -27,6 +27,7 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
 {
     internal const string HelperCommand = "__finish-standalone-update";
     private const string HelperName = "baidupcs-update-helper.exe";
+    private const string StagingPrefix = ".baidupcs-update-";
 
     public sealed class Settings : CommonSettings
     {
@@ -129,9 +130,7 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
         string source = Path.GetFullPath(args[1]);
         string target = Path.GetFullPath(args[2]);
         string directory = Path.GetDirectoryName(source)!;
-        string folder = Path.GetFileName(directory);
-        const string prefix = ".baidupcs-update-";
-        if (!folder.StartsWith(prefix, StringComparison.Ordinal) || !Guid.TryParseExact(folder[prefix.Length..], "N", out _)
+        if (!IsStagingFolder(Path.GetFileName(directory))
             || !string.Equals(helper, Path.Combine(directory, HelperName), StringComparison.OrdinalIgnoreCase)
             || !string.Equals(Path.GetDirectoryName(directory), Path.GetDirectoryName(target), StringComparison.OrdinalIgnoreCase)
             || !string.Equals(Path.GetFileName(source), "baidupcs.exe", StringComparison.OrdinalIgnoreCase))
@@ -160,4 +159,40 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
             return 1;
         }
     }
+
+    internal static void RemoveCompletedWindowsStages(string directory)
+    {
+        try
+        {
+            foreach (string stage in Directory.EnumerateDirectories(directory, StagingPrefix + "*"))
+            {
+                if (!IsStagingFolder(Path.GetFileName(stage)))
+                    continue;
+
+                try
+                {
+                    if ((File.GetAttributes(stage) & FileAttributes.ReparsePoint) != 0)
+                        continue;
+                    string[] contents = Directory.EnumerateFileSystemEntries(stage).Take(2).ToArray();
+                    if (contents is not [var helper] || Path.GetFileName(helper) != HelperName
+                        || (File.GetAttributes(helper) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+                        continue;
+
+                    File.Delete(helper);
+                    Directory.Delete(stage);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    // A helper may still be exiting, or another invocation may have cleaned up already.
+                }
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Startup must still work from a read-only directory.
+        }
+    }
+
+    private static bool IsStagingFolder(string name) => name.StartsWith(StagingPrefix, StringComparison.Ordinal)
+        && Guid.TryParseExact(name[StagingPrefix.Length..], "N", out _);
 }
