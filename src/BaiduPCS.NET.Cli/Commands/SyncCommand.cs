@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using BaiduPCS.Configuration;
 using BaiduPCS.Netdisk;
 using BaiduPCS.Transfers;
@@ -11,26 +10,40 @@ internal sealed class SyncCommand : RemoteCommand<SyncCommand.Settings>
 {
     public sealed class Settings : CommonSettings
     {
-        [CommandArgument(0, "<local-folder>")] public string LocalFolder { get; init; } = "";
-        [CommandArgument(1, "<remote-folder>")] public string RemoteFolder { get; init; } = "";
+        [CommandArgument(0, "<local>")]
+        [UiDescription("Existing local folder to synchronize.")]
+        public string LocalFolder { get; init; } = "";
+        [CommandArgument(1, "<remote>")]
+        [UiDescription("Existing Netdisk folder to synchronize.")]
+        public string RemoteFolder { get; init; } = "";
 
         [CommandOption("--mode <MODE>")]
-        [Description("upload, download, transfer-missing, or remove-missing.")]
+        [UiDescription("Choose upload, download, transfer-missing, or remove-missing.")]
         public string? Mode { get; init; }
 
         [CommandOption("--direction <DIRECTION>")]
-        [Description("Choose upload or download for a missing-only mode. Required for remove-missing.")]
+        [UiDescription("Choose upload or download for a missing-only mode. Required for remove-missing.")]
         public string? Direction { get; init; }
 
         [CommandOption("--compare <FIELDS>")]
-        [Description("Comma-separated fields: name,time,length,checksum. Defaults to name,time,length.")]
+        [UiDescription("Comma-separated fields: name,time,length,checksum. Defaults to name,time,length.")]
         public string? Compare { get; init; }
 
-        [CommandOption("-r|--recursive")] public bool Recursive { get; init; }
-        [CommandOption("--glob <PATTERN>")] public string[] Glob { get; init; } = [];
-        [CommandOption("--dry-run")] public bool DryRun { get; init; }
-        [CommandOption("-y|--yes")] public bool Yes { get; init; }
-        [CommandOption("--download-mode <MODE>")] public DownloadMode DownloadMode { get; init; }
+        [CommandOption("-r|--recursive")]
+        [UiDescription("Include files in subfolders.")]
+        public bool Recursive { get; init; }
+        [CommandOption("--glob <PATTERN>")]
+        [UiDescription("Include files matching this pattern. Repeat for multiple patterns.")]
+        public string[] Glob { get; init; } = [];
+        [CommandOption("--dry-run")]
+        [UiDescription("Show the sync plan without applying it.")]
+        public bool DryRun { get; init; }
+        [CommandOption("-y|--yes")]
+        [UiDescription("Apply the sync plan without prompting.")]
+        public bool Yes { get; init; }
+        [CommandOption("--download-mode <MODE>")]
+        [UiDescription("Use direct, pcs, or stream mode. Defaults to direct.")]
+        public DownloadMode DownloadMode { get; init; }
 
         internal SyncOptions GetOptions()
         {
@@ -90,7 +103,7 @@ internal sealed class SyncCommand : RemoteCommand<SyncCommand.Settings>
             {
                 if (Console.IsInputRedirected || Console.IsOutputRedirected)
                     throw new ArgumentException("Use --yes to apply a sync with redirected input or output.");
-                if (!AnsiConsole.Confirm("Apply these sync changes?", defaultValue: false))
+                if (!AnsiConsole.Confirm(Ui.Text("Apply these sync changes?"), defaultValue: false))
                     return 0;
             }
             return await ApplyAsync(client, profile.Settings, settings, options, plan, Path.Combine(Store.DirectoryPath, "uploads"), cancellationToken);
@@ -99,13 +112,14 @@ internal sealed class SyncCommand : RemoteCommand<SyncCommand.Settings>
 
     private static void ShowPlan(SyncPlan plan)
     {
-        Console.WriteLine($"Local: {plan.LocalRoot}{Environment.NewLine}Netdisk: {plan.RemoteRoot}");
-        var table = new Table().AddColumns("Action", "Path", "Reason");
+        Console.WriteLine(Ui.Format("Local: {0}", plan.LocalRoot));
+        Console.WriteLine(Ui.Format("Netdisk: {0}", plan.RemoteRoot));
+        var table = new Table().AddColumns(Ui.Text("Action"), Ui.Text("Path"), Ui.Text("Reason"));
         foreach (SyncChange change in plan.Changes)
-            table.AddRow(new Text(Label(change.Action)), new Text(change.Relative), new Text(change.Reason));
+            table.AddRow(new Text(Ui.Text(Label(change.Action))), new Text(change.Relative), new Text(Ui.Text(change.Reason)));
         if (plan.Changes.Count != 0)
             AnsiConsole.Write(table);
-        Console.WriteLine($"{plan.Changes.Count} planned, {plan.Skipped} skipped.");
+        Console.WriteLine(Ui.Format("{0} planned, {1} skipped.", plan.Changes.Count, plan.Skipped));
     }
 
     internal static async Task<int> ApplyAsync(NetdiskClient client, ClientSettings profile, Settings settings, SyncOptions options,
@@ -127,7 +141,7 @@ internal sealed class SyncCommand : RemoteCommand<SyncCommand.Settings>
                 OperationDisplay.Item row = display.Begin(queued);
                 try
                 {
-                    string result = await ApplyChangeAsync(change, row);
+                    string result = Ui.Text(await ApplyChangeAsync(change, row));
                     display.End(row, result, plain: $"{result}: {change.Relative}");
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or HttpRequestException
@@ -137,7 +151,7 @@ internal sealed class SyncCommand : RemoteCommand<SyncCommand.Settings>
                     {
                         HttpRequestException { StatusCode: { } status } => $"Baidu returned HTTP {(int)status} ({status}).",
                         HttpRequestException request => $"Baidu request failed ({request.HttpRequestError}).",
-                        _ => error.Message,
+                        _ => Ui.Text(error.Message),
                     };
                     display.End(row, reason, failed: true, plain: $"{change.Relative}: {reason}");
                     exitCode = 1;
@@ -188,7 +202,7 @@ internal sealed class SyncCommand : RemoteCommand<SyncCommand.Settings>
                     RemoteEntry entry = change.Remote!;
                     string? md5 = options.Compare.HasFlag(SyncComparison.Checksum) && options.Mode == SyncMode.Download
                         ? await client.GetFileMd5Async(entry, token) : null;
-                    bool downloaded = await client.DownloadAsync(entry with { Modified = entry.LocalModified ?? entry.Modified },
+                    bool downloaded = await client.DownloadAsync(entry,
                         local, new DownloadOptions
                         {
                             Mode = settings.DownloadMode,

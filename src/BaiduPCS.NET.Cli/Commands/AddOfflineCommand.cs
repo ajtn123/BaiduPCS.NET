@@ -8,8 +8,10 @@ internal sealed class AddOfflineCommand : RemoteCommand<AddOfflineCommand.Settin
     public sealed class Settings : CommonSettings
     {
         [CommandArgument(0, "<url>")]
+        [UiDescription("One or more source URLs for Baidu to download.")]
         public string[] Sources { get; init; } = [];
         [CommandOption("--path <DIRECTORY>")]
+        [UiDescription("Netdisk folder for the downloaded files. Defaults to the current folder.")]
         public string Path { get; init; } = ".";
     }
 

@@ -25,7 +25,7 @@ public sealed class OperationDisplayTests
         var complete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task running = display.RunAsync(() => complete.Task);
         string expanded = output.ToString();
-        Assert.Contains("Speed", expanded);
+        Assert.Contains(Ui.Text("Speed"), expanded);
         Assert.Contains("25", expanded);
         Assert.Contains("50", expanded);
         Assert.Contains("/first", expanded);
@@ -40,8 +40,8 @@ public sealed class OperationDisplayTests
         await running;
         Assert.Contains("/second", narrow);
         Assert.Contains("/first", narrow);
-        Assert.DoesNotContain("Speed", narrow);
-        Assert.Contains("Downloaded", output.ToString());
+        Assert.DoesNotContain(Ui.Text("Speed"), narrow);
+        Assert.Contains(Ui.Text("Downloaded"), output.ToString());
     }
 
     [Fact]
@@ -64,9 +64,9 @@ public sealed class OperationDisplayTests
         console.Write(display.Render(100, 20));
         string full = output.ToString();
         Assert.Contains("/finished", full);
-        Assert.Contains("Downloaded", full);
+        Assert.Contains(Ui.Text("Downloaded"), full);
         Assert.Contains("/next", full);
-        Assert.Contains("Pending", full);
+        Assert.Contains(Ui.Text("Pending"), full);
         Assert.Contains("/active", full);
         Assert.Contains("50%", full);
         Assert.Contains("/later", full);
@@ -79,7 +79,7 @@ public sealed class OperationDisplayTests
         Assert.Contains("/active", compact);
         Assert.Contains("/next", compact);
         Assert.True(compact.IndexOf("/active", StringComparison.Ordinal) < compact.IndexOf("/next", StringComparison.Ordinal));
-        Assert.Contains("+ 3 more", compact);
+        Assert.Contains(Ui.Format("+ {0} more", 3), compact);
         Assert.DoesNotContain("/later", compact);
         Assert.DoesNotContain("/finished", compact);
 
@@ -109,9 +109,9 @@ public sealed class OperationDisplayTests
         display.Report(item, 1, long.MaxValue, null);
         console.Write(display.Render(150, 20));
         string header = Header();
-        Assert.Contains("Transferred", header);
-        Assert.Contains("Speed", header);
-        Assert.Contains("ETA", header);
+        Assert.Contains(Ui.Text("Transferred"), header);
+        Assert.Contains(Ui.Text("Speed"), header);
+        Assert.Contains(Ui.Text("ETA"), header);
 
         output.GetStringBuilder().Clear();
         display.Report(item, long.MaxValue - 1000, long.MaxValue, null);
@@ -120,7 +120,7 @@ public sealed class OperationDisplayTests
         string transferred = raw ? "9223372036854774807/9223372036854775807 bytes" : "8 EiB / 8 EiB";
         Assert.True(output.ToString().Contains(transferred, StringComparison.Ordinal), output.ToString());
 
-        string Header() => output.ToString().Split('\n').Single(line => line.Contains("Transferred", StringComparison.Ordinal));
+        string Header() => output.ToString().Split('\n').Single(line => line.Contains(Ui.Text("Transferred"), StringComparison.Ordinal));
     }
 
     [Fact]

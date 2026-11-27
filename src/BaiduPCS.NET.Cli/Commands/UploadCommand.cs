@@ -11,26 +11,49 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
 {
     public sealed class Settings : CommonSettings
     {
-        [CommandArgument(0, "<path>")] public string[] Paths { get; init; } = [];
-        [CommandOption("--parallel <WORKERS>")] public int? Parallel { get; init; }
-        [CommandOption("--file-concurrency <FILES>")] public int? FileConcurrency { get; init; }
-        [CommandOption("--retries <COUNT>")] public int Retries { get; init; } = 3;
-        [CommandOption("--skip-rapid-check")] public bool SkipRapidCheck { get; init; }
-        [CommandOption("--rapid-check")] public bool RapidCheck { get; init; }
-        [CommandOption("--remove-source")] public bool RemoveSource { get; init; }
-        [CommandOption("--stdin")] public bool StandardInput { get; init; }
-        [CommandOption("--conflict <POLICY>")] public string? Conflict { get; init; }
-        [CommandOption("--as <NAME>")] public string? RemoteName { get; init; }
+        [CommandArgument(0, "<path>")]
+        [UiDescription("Local files, folders, or wildcard patterns, followed by a Netdisk directory.")]
+        public string[] Paths { get; init; } = [];
+        [CommandOption("--parallel <WORKERS>")]
+        [UiDescription("Maximum upload workers per file.")]
+        public int? Parallel { get; init; }
+        [CommandOption("--file-concurrency <FILES>")]
+        [UiDescription("Maximum files to transfer at once.")]
+        public int? FileConcurrency { get; init; }
+        [CommandOption("--retries <COUNT>")]
+        [UiDescription("Maximum retries after a failed attempt. Defaults to 3.")]
+        public int Retries { get; init; } = 3;
+        [CommandOption("--skip-rapid-check")]
+        [UiDescription("Skip the rapid upload check for this transfer.")]
+        public bool SkipRapidCheck { get; init; }
+        [CommandOption("--rapid-check")]
+        [UiDescription("Enable the rapid upload check for this transfer.")]
+        public bool RapidCheck { get; init; }
+        [CommandOption("--remove-source")]
+        [UiDescription("Delete the local source after verifying the remote file by size and MD5.")]
+        public bool RemoveSource { get; init; }
+        [CommandOption("--stdin")]
+        [UiDescription("Upload binary standard input to the specified Netdisk file path.")]
+        public bool StandardInput { get; init; }
+        [CommandOption("--conflict <POLICY>")]
+        [UiDescription("When a remote file exists, use skip, overwrite, or overwrite-if-size-differs.")]
+        public string? Conflict { get; init; }
+        [CommandOption("--as <NAME>")]
+        [UiDescription("Set the remote name for a single local file.")]
+        public string? RemoteName { get; init; }
+        [CommandOption("--no-preserve-mtime")]
+        [UiDescription("Let Baidu set the modification time of uploaded files.")]
+        public bool NoPreserveMtime { get; init; }
 
         public override ValidationResult Validate() => StandardInput && (Paths.Length != 1 || RemoveSource || RemoteName is not null)
-            ? ValidationResult.Error("Use upload - with one remote file path and without --as or --remove-source.")
+            ? ValidationResult.Error(Ui.Text("Use upload - with one remote file path and without --as or --remove-source."))
             : !StandardInput && Paths.Length < 2
-            ? ValidationResult.Error("Specify at least one local source, followed by the remote directory.")
+            ? ValidationResult.Error(Ui.Text("Specify at least one local source, followed by the remote directory."))
             : RemoteName is not null && (Paths.Length != 2 || RemoteName is "" or "." or ".." || RemoteName.Contains('/'))
-                ? ValidationResult.Error("--as requires one local file and a name within the remote directory.")
-            : SkipRapidCheck && RapidCheck ? ValidationResult.Error("Choose either --rapid-check or --skip-rapid-check.")
+                ? ValidationResult.Error(Ui.Text("--as requires one local file and a name within the remote directory."))
+            : SkipRapidCheck && RapidCheck ? ValidationResult.Error(Ui.Text("Choose either --rapid-check or --skip-rapid-check."))
             : Parallel is < 1 || FileConcurrency is < 1 || Retries < 0
-                ? ValidationResult.Error("Concurrency must be positive and retries cannot be negative.") : ValidationResult.Success();
+                ? ValidationResult.Error(Ui.Text("Concurrency must be positive and retries cannot be negative.")) : ValidationResult.Success();
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -45,6 +68,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                 Retries = settings.Retries,
                 SkipRapidCheck = settings.SkipRapidCheck || !settings.RapidCheck && profile.Settings.SkipRapidCheck,
                 RemoveSource = settings.RemoveSource,
+                PreserveModifiedTime = !settings.NoPreserveMtime && !settings.StandardInput,
                 Conflict = settings.Conflict is null ? profile.Settings.UploadConflict : SetConfigCommand.ParseConflict(settings.Conflict),
             };
             if (settings.StandardInput)
@@ -93,11 +117,12 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                         UploadResult.Skipped => "Skipped",
                         _ => "Uploaded",
                     };
+                    label = Ui.Text(label);
                     string plain = $"{label} {item.Target}";
                     if (settings.RemoveSource)
                     {
-                        label += ", removed local source";
-                        plain += $" (removed {item.File.FullName})";
+                        label += Ui.Text(", removed local source");
+                        plain += Ui.Format(" (removed {0})", item.File.FullName);
                     }
                     display.End(row, label, plain: plain);
                 }
@@ -112,7 +137,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                 }
             }));
 
-            Console.WriteLine($"Processed {numbers.Bytes(totalBytes)} in {numbers.Duration(timer.Elapsed.TotalSeconds)}.");
+            Console.WriteLine(Ui.Format("Processed {0} in {1}.", numbers.Bytes(totalBytes), numbers.Duration(timer.Elapsed.TotalSeconds)));
             foreach (string failure in failures)
                 Console.Error.WriteLine(failure);
 
@@ -152,7 +177,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                 UploadResult.Skipped => "Skipped",
                 _ => "Uploaded",
             };
-            Console.WriteLine($"{status} {remote}");
+            Console.WriteLine($"{Ui.Text(status)} {remote}");
             return 0;
         }
         finally
@@ -167,7 +192,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
     {
         var items = new Dictionary<string, UploadItem>(StringComparer.Ordinal);
         var ancestors = new HashSet<string>(LocalPathComparer);
-        string[] sources = paths.SelectMany(path => ExpandLocalPaths(path, token)).ToArray();
+        string[] sources = [.. paths.SelectMany(path => ExpandLocalPaths(path, token))];
         if (remoteName is not null && sources.Length != 1)
             throw new ArgumentException("--as requires exactly one matching local file.");
         foreach (string path in sources)
@@ -252,7 +277,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
             string segment = segments[index];
             if (!GlobSegment.IsPattern(segment))
             {
-                paths = paths.Select(parent => Path.Combine(parent, segment)).Where(Path.Exists).ToList();
+                paths = [.. paths.Select(parent => Path.Combine(parent, segment)).Where(Path.Exists)];
                 continue;
             }
 

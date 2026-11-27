@@ -10,8 +10,12 @@ internal sealed class InspectShareCommand : RemoteCommand<InspectShareCommand.Se
 
     public sealed class Settings : CommonSettings
     {
-        [CommandArgument(0, "<link>")] public string Link { get; init; } = "";
-        [CommandOption("--code <CODE>")] public string? Code { get; init; }
+        [CommandArgument(0, "<link>")]
+        [UiDescription("Baidu share URL or copied share text.")]
+        public string Link { get; init; } = "";
+        [CommandOption("--code <CODE>")]
+        [UiDescription("Supply the share extraction code.")]
+        public string? Code { get; init; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)

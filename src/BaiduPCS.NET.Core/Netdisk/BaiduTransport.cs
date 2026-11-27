@@ -212,8 +212,8 @@ internal sealed class BaiduTransport : IDisposable
         string[] addresses = settings.LocalAddresses.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (addresses.Length > 0 || settings.NetworkFamily != NetworkFamily.Auto)
         {
-            IPAddress[] bindAddresses = addresses.Select(value => IPAddress.TryParse(value, out IPAddress? address)
-                ? address : throw new ArgumentException("Local addresses must be IPv4 or IPv6 addresses.")).ToArray();
+            IPAddress[] bindAddresses = [.. addresses.Select(value => IPAddress.TryParse(value, out IPAddress? address)
+                ? address : throw new ArgumentException("Local addresses must be IPv4 or IPv6 addresses."))];
             handler.ConnectCallback = (context, token) => ConnectAsync(context.DnsEndPoint, bindAddresses, settings.NetworkFamily, token);
         }
 

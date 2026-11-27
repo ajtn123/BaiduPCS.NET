@@ -6,12 +6,24 @@ internal sealed class ImportShareCommand : RemoteCommand<ImportShareCommand.Sett
 {
     public sealed class Settings : CommonSettings
     {
-        [CommandArgument(0, "<link>")] public string Link { get; init; } = "";
-        [CommandOption("--code <CODE>")] public string? Code { get; init; }
-        [CommandOption("--file-id <ID>")] public long[] FileIds { get; init; } = [];
-        [CommandOption("--destination <PATH>")] public string Destination { get; init; } = ".";
-        [CommandOption("--collect")] public bool Collect { get; init; }
-        [CommandOption("--download")] public bool Download { get; init; }
+        [CommandArgument(0, "<link>")]
+        [UiDescription("Baidu share URL or copied share text.")]
+        public string Link { get; init; } = "";
+        [CommandOption("--code <CODE>")]
+        [UiDescription("Supply the share extraction code.")]
+        public string? Code { get; init; }
+        [CommandOption("--file-id <ID>")]
+        [UiDescription("Import only the specified shared file IDs. Repeat to select multiple files.")]
+        public long[] FileIds { get; init; } = [];
+        [CommandOption("--destination <PATH>")]
+        [UiDescription("Netdisk folder to copy the files into. Defaults to the current folder.")]
+        public string Destination { get; init; } = ".";
+        [CommandOption("--collect")]
+        [UiDescription("Collect the share in Baidu Netdisk.")]
+        public bool Collect { get; init; }
+        [CommandOption("--download")]
+        [UiDescription("Download the files after importing them into Netdisk.")]
+        public bool Download { get; init; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)

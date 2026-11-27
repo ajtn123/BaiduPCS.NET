@@ -25,12 +25,7 @@
   <data name="Show a remote directory tree." xml:space="preserve"><value>显示网盘目录树。</value></data>
   <data name="Create remote directories." xml:space="preserve"><value>创建网盘目录。</value></data>
   <data name="Remove files or directories from the drive." xml:space="preserve"><value>删除网盘文件或目录。</value></data>
-  <data name="Copy files or directories on the drive." xml:space="preserve"><value>复制网盘文件或目录。</value></data>
-  <data name="Move files or directories on the drive." xml:space="preserve"><value>移动网盘文件或目录。</value></data>
-  <data name="Rename a file or directory within its parent." xml:space="preserve"><value>在原目录中重命名文件或目录。</value></data>
   <data name="Resolve direct or Pan web download links." xml:space="preserve"><value>获取直链或网盘网页下载链接。</value></data>
-  <data name="Download files and directory trees from Baidu Netdisk." xml:space="preserve"><value>从百度网盘下载文件或目录。</value></data>
-  <data name="Upload local files or directory trees to a remote directory." xml:space="preserve"><value>上传本地文件或目录到网盘。</value></data>
   <data name="Preview and synchronize a local folder with a Netdisk folder." xml:space="preserve"><value>预览并同步本地目录与网盘目录。</value></data>
   <data name="Calculate Baidu file checksums and checksum links." xml:space="preserve"><value>计算百度网盘文件校验值及校验链接。</value></data>
   <data name="Export remote file checksums and directory structure." xml:space="preserve"><value>导出网盘文件的校验值和目录结构。</value></data>
@@ -77,4 +72,181 @@
   <data name="Encryption key:" xml:space="preserve"><value>加密密钥：</value></data>
   <data name="Clear all offline task records?" xml:space="preserve"><value>清空所有离线下载记录吗？</value></data>
   <data name="Permanently delete everything in the recycle bin?" xml:space="preserve"><value>永久删除回收站中的所有内容吗？</value></data>
+  <data name="Enable diagnostic output." xml:space="preserve"><value>显示诊断信息。</value></data>
+  <data name="Show exact byte counts and durations in seconds." xml:space="preserve"><value>按字节和秒显示数值。</value></data>
+  <data name="One or more source URLs for Baidu to download." xml:space="preserve"><value>要提交给百度进行离线下载的一个或多个源网址。</value></data>
+  <data name="Netdisk folder for the downloaded files. Defaults to the current folder." xml:space="preserve"><value>保存离线下载文件的网盘目录，默认为当前目录。</value></data>
+  <data name="Install the update without prompting." xml:space="preserve"><value>跳过确认提示并安装更新。</value></data>
+  <data name="Netdisk folder to make current." xml:space="preserve"><value>要切换到的网盘目录。</value></data>
+  <data name="List the folder after switching to it." xml:space="preserve"><value>切换目录后列出其中的内容。</value></data>
+  <data name="Local files to calculate checksums for." xml:space="preserve"><value>要计算校验值的本地文件。</value></data>
+  <data name="Set the extraction code for the share." xml:space="preserve"><value>设置分享提取码。</value></data>
+  <data name="Set the share lifetime in days. Defaults to 0." xml:space="preserve"><value>设置分享有效天数，默认为 0。</value></data>
+  <data name="Include the extraction code in the printed URL." xml:space="preserve"><value>在输出的链接中附带提取码。</value></data>
+  <data name="IDs to delete. Use --all to select every entry." xml:space="preserve"><value>要删除的条目 ID。使用 --all 选择全部条目。</value></data>
+  <data name="Delete every entry." xml:space="preserve"><value>删除全部条目。</value></data>
+  <data name="Confirm clearing every entry without prompting." xml:space="preserve"><value>跳过确认提示并清空全部条目。</value></data>
+  <data name="Netdisk files, folders, or wildcard patterns to download." xml:space="preserve"><value>要下载的网盘文件、目录或通配符模式。</value></data>
+  <data name="Use direct, pcs, or stream mode. Defaults to direct." xml:space="preserve"><value>选择 direct、pcs 或 stream 下载模式，默认为 direct。</value></data>
+  <data name="Preferred direct link index, starting at zero." xml:space="preserve"><value>首选直链的索引，从 0 开始。</value></data>
+  <data name="Read the download without saving a local file." xml:space="preserve"><value>读取下载数据，跳过本地文件写入。</value></data>
+  <data name="Replace existing local destination files." xml:space="preserve"><value>覆盖已有的本地目标文件。</value></data>
+  <data name="Show download worker progress." xml:space="preserve"><value>显示下载工作线程的进度。</value></data>
+  <data name="Local directory for downloaded files." xml:space="preserve"><value>保存下载文件的本地目录。</value></data>
+  <data name="Recreate the full Netdisk path under the output directory." xml:space="preserve"><value>在输出目录下保留完整的网盘路径。</value></data>
+  <data name="Grant the owner execute permission on Unix when saving files." xml:space="preserve"><value>在 Unix 系统上为保存的文件添加所有者执行权限。</value></data>
+  <data name="Maximum download workers per file." xml:space="preserve"><value>每个下载文件可用的最大工作线程数。</value></data>
+  <data name="Maximum files to transfer at once." xml:space="preserve"><value>同时传输的最大文件数。</value></data>
+  <data name="Maximum retries after a failed attempt. Defaults to 3." xml:space="preserve"><value>失败后的最大重试次数，默认为 3。</value></data>
+  <data name="Verify downloads against available file checksums." xml:space="preserve"><value>使用可用的文件校验值验证下载内容。</value></data>
+  <data name="Disable checksum verification for this download." xml:space="preserve"><value>关闭本次下载的校验值验证。</value></data>
+  <data name="Let the local filesystem set downloaded file modification times." xml:space="preserve"><value>由本地文件系统为下载的文件设置修改时间。</value></data>
+  <data name="Write each file progressively without reserving its full size up front." xml:space="preserve"><value>逐步写入每个文件，跳过预分配完整空间。</value></data>
+  <data name="Begin downloading files as they are discovered." xml:space="preserve"><value>发现文件后立即开始下载。</value></data>
+  <data name="Resume all queued downloads for the active account using their saved options." xml:space="preserve"><value>按已保存的选项恢复当前帐号的所有排队下载。</value></data>
+  <data name="Use the Pan web endpoint. Links can require a signed-in session." xml:space="preserve"><value>使用网盘网页接口。打开链接可能需要已登录的会话。</value></data>
+  <data name="Netdisk paths to export. Defaults to the current folder." xml:space="preserve"><value>要导出的网盘路径，默认为当前目录。</value></data>
+  <data name="Set the root prefix written to the exported records." xml:space="preserve"><value>设置导出记录中的根路径前缀。</value></data>
+  <data name="Append records to this local file." xml:space="preserve"><value>将导出记录追加到指定的本地文件。</value></data>
+  <data name="Write export records to standard output." xml:space="preserve"><value>将导出记录写入标准输出。</value></data>
+  <data name="Include files in subfolders." xml:space="preserve"><value>包括子目录中的文件。</value></data>
+  <data name="Choose manifest or checksum-link. Defaults to manifest." xml:space="preserve"><value>选择 manifest 或 checksum-link，默认为 manifest。</value></data>
+  <data name="One or more positive item IDs." xml:space="preserve"><value>一个或多个正整数条目 ID。</value></data>
+  <data name="Path to pcs_config.json. Omit it to use the standard BaiduPCS-Go location." xml:space="preserve"><value>pcs_config.json 的路径。省略时使用 BaiduPCS-Go 的默认位置。</value></data>
+  <data name="Baidu share URL or copied share text." xml:space="preserve"><value>百度网盘分享链接或复制的分享文本。</value></data>
+  <data name="Supply the share extraction code." xml:space="preserve"><value>提供分享提取码。</value></data>
+  <data name="Import only the specified shared file IDs. Repeat to select multiple files." xml:space="preserve"><value>只转存指定 ID 的分享文件。可重复使用此选项。</value></data>
+  <data name="Netdisk folder to copy the files into. Defaults to the current folder." xml:space="preserve"><value>转存文件的网盘目录，默认为当前目录。</value></data>
+  <data name="Collect the share in Baidu Netdisk." xml:space="preserve"><value>在百度网盘中收藏此分享。</value></data>
+  <data name="Download the files after importing them into Netdisk." xml:space="preserve"><value>转存到网盘后下载文件。</value></data>
+  <data name="Include file IDs, timestamps, and checksums." xml:space="preserve"><value>包括文件 ID、时间戳和校验值。</value></data>
+  <data name="Sort by name, time, or size. Defaults to name." xml:space="preserve"><value>按 name、time 或 size 排序，默认为 name。</value></data>
+  <data name="Reverse the selected sort order." xml:space="preserve"><value>按所选字段降序排列。</value></data>
+  <data name="Write results as JSON." xml:space="preserve"><value>以 JSON 格式输出结果。</value></data>
+  <data name="Rank immediate subdirectories by their recursive size." xml:space="preserve"><value>按累计大小排列当前目录的直接子目录。</value></data>
+  <data name="Unsupported password sign-in." xml:space="preserve"><value>不支持密码登录。</value></data>
+  <data name="Sign in using browser cookies." xml:space="preserve"><value>使用浏览器 Cookie 登录。</value></data>
+  <data name="Read browser cookies from standard input." xml:space="preserve"><value>从标准输入读取浏览器 Cookie。</value></data>
+  <data name="Sign in using BDUSS from browser cookies." xml:space="preserve"><value>使用浏览器 Cookie 中的 BDUSS 登录。</value></data>
+  <data name="Read browser-derived BDUSS from standard input." xml:space="preserve"><value>从标准输入读取来自浏览器 Cookie 的 BDUSS。</value></data>
+  <data name="Optional browser-derived PTOKEN for BDUSS sign-in." xml:space="preserve"><value>BDUSS 登录时可选用浏览器 Cookie 中的 PTOKEN。</value></data>
+  <data name="Optional browser-derived STOKEN for BDUSS sign-in." xml:space="preserve"><value>BDUSS 登录时可选用浏览器 Cookie 中的 STOKEN。</value></data>
+  <data name="Supply a numeric account UID with the configured manual account name." xml:space="preserve"><value>使用已配置的手动帐号名称并提供数字 UID。</value></data>
+  <data name="Remove the saved account without prompting." xml:space="preserve"><value>跳过确认提示并移除已保存的帐号。</value></data>
+  <data name="Netdisk wildcard pattern to expand." xml:space="preserve"><value>要展开的网盘通配符模式。</value></data>
+  <data name="Netdisk paths or patterns. Defaults to the current folder." xml:space="preserve"><value>网盘路径或通配符模式，默认为当前目录。</value></data>
+  <data name="Netdisk path. Defaults to the current folder." xml:space="preserve"><value>网盘路径，默认为当前目录。</value></data>
+  <data name="Page number, starting at 1." xml:space="preserve"><value>页码，从 1 开始。</value></data>
+  <data name="Netdisk paths or wildcard patterns." xml:space="preserve"><value>网盘路径或通配符模式。</value></data>
+  <data name="Match file or folder names with a regular expression." xml:space="preserve"><value>用正则表达式匹配文件或目录名。</value></data>
+  <data name="Replacement text for the regular expression match." xml:space="preserve"><value>正则表达式匹配项的替换文本。</value></data>
+  <data name="Preview renamed paths without changing them." xml:space="preserve"><value>预览重命名后的路径。</value></data>
+  <data name="Text to search for in file and folder names." xml:space="preserve"><value>要在文件名和目录名中查找的文本。</value></data>
+  <data name="Netdisk folder to search. Defaults to the current folder." xml:space="preserve"><value>要搜索的网盘目录，默认为当前目录。</value></data>
+  <data name="Read the token from standard input." xml:space="preserve"><value>从标准输入读取访问令牌。</value></data>
+  <data name="One or more settings in key=value format." xml:space="preserve"><value>一个或多个 key=value 格式的设置项。</value></data>
+  <data name="Account UID or name. Omit to choose interactively." xml:space="preserve"><value>帐号 UID 或名称。省略时从交互菜单中选择。</value></data>
+  <data name="Existing local folder to synchronize." xml:space="preserve"><value>要同步的现有本地目录。</value></data>
+  <data name="Existing Netdisk folder to synchronize." xml:space="preserve"><value>要同步的现有网盘目录。</value></data>
+  <data name="Choose upload, download, transfer-missing, or remove-missing." xml:space="preserve"><value>选择 upload、download、transfer-missing 或 remove-missing。</value></data>
+  <data name="Choose upload or download for a missing-only mode. Required for remove-missing." xml:space="preserve"><value>只处理缺失路径时选择 upload 或 download 方向。remove-missing 必须指定方向。</value></data>
+  <data name="Comma-separated fields: name,time,length,checksum. Defaults to name,time,length." xml:space="preserve"><value>用逗号分隔比较字段 name、time、length、checksum，默认为 name,time,length。</value></data>
+  <data name="Include files matching this pattern. Repeat for multiple patterns." xml:space="preserve"><value>包括与此模式匹配的文件。可重复使用此选项。</value></data>
+  <data name="Show the sync plan without applying it." xml:space="preserve"><value>仅显示同步计划。</value></data>
+  <data name="Apply the sync plan without prompting." xml:space="preserve"><value>跳过确认提示并执行同步计划。</value></data>
+  <data name="Local files to encrypt or decrypt." xml:space="preserve"><value>要加密或解密的本地文件。</value></data>
+  <data name="Choose aes-{128,192,256}-{ctr,cfb,ofb}. Defaults to aes-128-ctr." xml:space="preserve"><value>选择 aes-{128,192,256}-{ctr,cfb,ofb}，默认为 aes-128-ctr。</value></data>
+  <data name="Supply the encryption or decryption key." xml:space="preserve"><value>提供加密或解密密钥。</value></data>
+  <data name="Read the key from standard input." xml:space="preserve"><value>从标准输入读取密钥。</value></data>
+  <data name="Disable gzip compression on encryption or decompression on decryption." xml:space="preserve"><value>加密时关闭 gzip 压缩，解密时关闭 gzip 解压。</value></data>
+  <data name="Delete each source file after writing its output successfully." xml:space="preserve"><value>成功写入输出文件后删除对应的源文件。</value></data>
+  <data name="Maximum number of directory levels to display." xml:space="preserve"><value>要显示的最大目录层数。</value></data>
+  <data name="Include Netdisk file IDs in the tree." xml:space="preserve"><value>在目录树中显示网盘文件 ID。</value></data>
+  <data name="Local files, folders, or wildcard patterns, followed by a Netdisk directory." xml:space="preserve"><value>先填写本地文件、目录或通配符模式，再填写网盘目标目录。</value></data>
+  <data name="Maximum upload workers per file." xml:space="preserve"><value>每个上传文件可用的最大工作线程数。</value></data>
+  <data name="Skip the rapid upload check for this transfer." xml:space="preserve"><value>本次传输跳过秒传检查。</value></data>
+  <data name="Enable the rapid upload check for this transfer." xml:space="preserve"><value>本次传输启用秒传检查。</value></data>
+  <data name="Delete the local source after verifying the remote file by size and MD5." xml:space="preserve"><value>核对网盘文件的大小和 MD5 后删除本地源文件。</value></data>
+  <data name="Upload binary standard input to the specified Netdisk file path." xml:space="preserve"><value>将标准输入的二进制数据上传到指定的网盘文件路径。</value></data>
+  <data name="When a remote file exists, use skip, overwrite, or overwrite-if-size-differs." xml:space="preserve"><value>网盘文件已存在时，选择 skip、overwrite 或 overwrite-if-size-differs。</value></data>
+  <data name="Set the remote name for a single local file." xml:space="preserve"><value>为单个本地文件指定网盘文件名。</value></data>
+  <data name="Let Baidu set the modification time of uploaded files." xml:space="preserve"><value>由百度网盘为上传的文件设置修改时间。</value></data>
+  <data name="Copy files or folders on Netdisk. Supply the sources followed by the destination." xml:space="preserve"><value>在网盘内复制文件或目录。先填写源路径，再填写目标路径。</value></data>
+  <data name="Move files or folders on Netdisk. Supply the sources followed by the destination." xml:space="preserve"><value>在网盘内移动文件或目录。先填写源路径，再填写目标路径。</value></data>
+  <data name="Rename files or folders by supplying a source and a new name, or use a regular expression." xml:space="preserve"><value>填写源路径和新名称来重命名文件或目录，也可以使用正则表达式批量重命名。</value></data>
+  <data name="Download files and directory trees from Baidu Netdisk. File modification times are preserved by default." xml:space="preserve"><value>从百度网盘下载文件或目录，默认保留文件修改时间。</value></data>
+  <data name="Upload local files or directory trees to Netdisk. File modification times are preserved by default." xml:space="preserve"><value>将本地文件或目录上传到百度网盘，默认保留文件修改时间。</value></data>
+  <data name="Result" xml:space="preserve"><value>结果</value></data>
+  <data name="File" xml:space="preserve"><value>文件</value></data>
+  <data name="Path" xml:space="preserve"><value>路径</value></data>
+  <data name="Item" xml:space="preserve"><value>项目</value></data>
+  <data name="Progress" xml:space="preserve"><value>进度</value></data>
+  <data name="Transferred" xml:space="preserve"><value>已传输</value></data>
+  <data name="Speed" xml:space="preserve"><value>速度</value></data>
+  <data name="ETA" xml:space="preserve"><value>预计剩余时间</value></data>
+  <data name="Part" xml:space="preserve"><value>分片</value></data>
+  <data name="+ {0} more" xml:space="preserve"><value>另有 {0} 项</value></data>
+  <data name=" part {0}" xml:space="preserve"><value> 分片 {0}</value></data>
+  <data name="Pending" xml:space="preserve"><value>等待中</value></data>
+  <data name="Working…" xml:space="preserve"><value>处理中…</value></data>
+  <data name="Failed" xml:space="preserve"><value>失败</value></data>
+  <data name="No pending downloads for the active account." xml:space="preserve"><value>当前帐号没有待下载的文件。</value></data>
+  <data name="Tested" xml:space="preserve"><value>测试完成</value></data>
+  <data name="Downloaded" xml:space="preserve"><value>已下载</value></data>
+  <data name="Skipped" xml:space="preserve"><value>已跳过</value></data>
+  <data name="Uploaded" xml:space="preserve"><value>已上传</value></data>
+  <data name="Rapid upload" xml:space="preserve"><value>秒传完成</value></data>
+  <data name="Done" xml:space="preserve"><value>已完成</value></data>
+  <data name="Processed {0} in {1}." xml:space="preserve"><value>已处理 {0}，用时 {1}。</value></data>
+  <data name="Failed downloads ({0}): {1}" xml:space="preserve"><value>下载失败（{0} 项）：{1}</value></data>
+  <data name=", removed local source" xml:space="preserve"><value>，已删除本地源文件</value></data>
+  <data name=" (removed {0})" xml:space="preserve"><value>（已删除 {0}）</value></data>
+  <data name="Apply these sync changes?" xml:space="preserve"><value>要执行这些同步操作吗？</value></data>
+  <data name="Local: {0}" xml:space="preserve"><value>本地：{0}</value></data>
+  <data name="Netdisk: {0}" xml:space="preserve"><value>网盘：{0}</value></data>
+  <data name="Action" xml:space="preserve"><value>操作</value></data>
+  <data name="Reason" xml:space="preserve"><value>原因</value></data>
+  <data name="{0} planned, {1} skipped." xml:space="preserve"><value>计划执行 {0} 项，跳过 {1} 项。</value></data>
+  <data name="Upload" xml:space="preserve"><value>上传</value></data>
+  <data name="Download" xml:space="preserve"><value>下载</value></data>
+  <data name="Create local directory" xml:space="preserve"><value>创建本地目录</value></data>
+  <data name="Create remote directory" xml:space="preserve"><value>创建网盘目录</value></data>
+  <data name="Remove locally" xml:space="preserve"><value>从本地删除</value></data>
+  <data name="Remove from Netdisk" xml:space="preserve"><value>从网盘删除</value></data>
+  <data name="Created local directory" xml:space="preserve"><value>已创建本地目录</value></data>
+  <data name="Created remote directory" xml:space="preserve"><value>已创建网盘目录</value></data>
+  <data name="Skipped upload" xml:space="preserve"><value>已跳过上传</value></data>
+  <data name="Skipped download" xml:space="preserve"><value>已跳过下载</value></data>
+  <data name="Kept nonempty directory" xml:space="preserve"><value>已保留非空目录</value></data>
+  <data name="Removed locally" xml:space="preserve"><value>已从本地删除</value></data>
+  <data name="Removed from Netdisk" xml:space="preserve"><value>已从网盘删除</value></data>
+  <data name="Missing locally" xml:space="preserve"><value>本地缺少该路径</value></data>
+  <data name="Missing on Netdisk" xml:space="preserve"><value>网盘缺少该路径</value></data>
+  <data name="Modification time differs" xml:space="preserve"><value>修改时间不同</value></data>
+  <data name="Length differs" xml:space="preserve"><value>文件大小不同</value></data>
+  <data name="Checksum differs" xml:space="preserve"><value>校验值不同</value></data>
+  <data name="Choose --mode upload, download, transfer-missing, or remove-missing." xml:space="preserve"><value>请将 --mode 设为 upload、download、transfer-missing 或 remove-missing。</value></data>
+  <data name="--direction is available for transfer-missing and remove-missing." xml:space="preserve"><value>--direction 仅适用于 transfer-missing 和 remove-missing。</value></data>
+  <data name="Missing-only modes compare paths. Use --compare with upload or download." xml:space="preserve"><value>仅处理缺失项的模式按路径比较。--compare 适用于 upload 和 download。</value></data>
+  <data name="Choose --direction upload or download." xml:space="preserve"><value>请将 --direction 设为 upload 或 download。</value></data>
+  <data name="--compare accepts name, time, length, and checksum." xml:space="preserve"><value>--compare 支持 name、time、length 和 checksum。</value></data>
+  <data name="Use --yes to apply a sync with redirected input or output." xml:space="preserve"><value>重定向输入或输出时，请使用 --yes 执行同步。</value></data>
+  <data name="The local sync root must be an existing directory." xml:space="preserve"><value>本地同步根路径必须是现有目录。</value></data>
+  <data name="The remote sync root must be an existing directory." xml:space="preserve"><value>网盘同步根路径必须是现有目录。</value></data>
+  <data name="The local path changed after the sync preview." xml:space="preserve"><value>预览后本地路径已发生变化。</value></data>
+  <data name="The local path appeared after the sync preview." xml:space="preserve"><value>预览后本地路径已出现。</value></data>
+  <data name="The Netdisk path changed after the sync preview." xml:space="preserve"><value>预览后网盘路径已发生变化。</value></data>
+  <data name="The Netdisk parent changed after the sync preview." xml:space="preserve"><value>预览后网盘父目录已发生变化。</value></data>
+  <data name="The Netdisk path appeared after the sync preview." xml:space="preserve"><value>预览后网盘路径已出现。</value></data>
+  <data name="Concurrency must be positive, and link index and retries cannot be negative." xml:space="preserve"><value>并发数必须为正数，链接索引和重试次数不得为负。</value></data>
+  <data name="Choose either --verify or --skip-verification." xml:space="preserve"><value>请选择 --verify 或 --skip-verification。</value></data>
+  <data name="--resume-all uses saved paths, destinations, and transfer options." xml:space="preserve"><value>--resume-all 使用已保存的路径、目标和传输选项。</value></data>
+  <data name="Specify a download path or --resume-all." xml:space="preserve"><value>请指定下载路径或使用 --resume-all。</value></data>
+  <data name="The queued remote file is missing or has changed. Start a new download for its current contents." xml:space="preserve"><value>队列中的网盘文件已丢失或发生变化。请重新下载当前文件。</value></data>
+  <data name="Use upload - with one remote file path and without --as or --remove-source." xml:space="preserve"><value>请用 upload - 指定一个网盘文件路径，并省略 --as 和 --remove-source。</value></data>
+  <data name="Specify at least one local source, followed by the remote directory." xml:space="preserve"><value>请先指定至少一个本地源路径，再指定网盘目标目录。</value></data>
+  <data name="--as requires one local file and a name within the remote directory." xml:space="preserve"><value>--as 要求提供一个本地文件和一个网盘目标文件名。</value></data>
+  <data name="Choose either --rapid-check or --skip-rapid-check." xml:space="preserve"><value>请选择 --rapid-check 或 --skip-rapid-check。</value></data>
+  <data name="Concurrency must be positive and retries cannot be negative." xml:space="preserve"><value>并发数必须为正数，重试次数不得为负。</value></data>
+  <data name="No nonempty local files were found to upload." xml:space="preserve"><value>没有找到可上传的非空本地文件。</value></data>
 </root>

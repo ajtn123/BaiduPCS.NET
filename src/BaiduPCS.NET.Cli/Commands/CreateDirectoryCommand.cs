@@ -10,7 +10,7 @@ internal sealed class CreateDirectoryCommand : RemoteCommand<RemotePaths>
         var (account, client) = await OpenAsync(settings, cancellationToken);
         using (client)
         {
-            string[] paths = settings.Paths.Select(path => RemotePath.Resolve(account.WorkingDirectory, path)).Distinct().ToArray();
+            string[] paths = [.. settings.Paths.Select(path => RemotePath.Resolve(account.WorkingDirectory, path)).Distinct()];
             return await ExecuteEachAsync(settings, paths, path => path, path => client.CreateDirectoryAsync(path, cancellationToken), cancellationToken);
         }
     }

@@ -9,9 +9,11 @@ internal sealed class TreeCommand : RemoteCommand<TreeCommand.Settings>
     public sealed class Settings : OptionalRemotePath
     {
         [CommandOption("--depth <LEVELS>")]
+        [UiDescription("Maximum number of directory levels to display.")]
         public int Depth { get; init; } = -1;
 
         [CommandOption("--file-ids")]
+        [UiDescription("Include Netdisk file IDs in the tree.")]
         public bool FileIds { get; init; }
 
         public override ValidationResult Validate() => Depth >= -1

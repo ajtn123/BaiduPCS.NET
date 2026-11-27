@@ -6,6 +6,7 @@ namespace BaiduPCS.Cli.Commands;
 internal sealed class PageSettings : CommonSettings
 {
     [CommandOption("--page <PAGE>")]
+    [UiDescription("Page number, starting at 1.")]
     public int Page { get; init; } = 1;
 
     public override ValidationResult Validate() => Page >= 1

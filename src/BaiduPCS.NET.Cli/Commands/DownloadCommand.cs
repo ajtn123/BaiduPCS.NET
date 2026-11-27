@@ -12,33 +12,69 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
 {
     public sealed class Settings : CommonSettings
     {
-        [CommandArgument(0, "[path]")] public string[] Paths { get; init; } = [];
-        [CommandOption("--mode <MODE>")] public DownloadMode Mode { get; init; }
-        [CommandOption("--link-index <INDEX>")] public int LinkIndex { get; init; }
-        [CommandOption("--test")] public bool Test { get; init; }
-        [CommandOption("--overwrite")] public bool Overwrite { get; init; }
-        [CommandOption("--worker-status")] public bool WorkerStatus { get; init; }
-        [CommandOption("--output-directory <PATH>")] public string? OutputDirectory { get; init; }
-        [CommandOption("--full-path")] public bool FullPath { get; init; }
-        [CommandOption("--executable")] public bool Executable { get; init; }
-        [CommandOption("--parallel <WORKERS>")] public int? Parallel { get; init; }
-        [CommandOption("--file-concurrency <FILES>")] public int? FileConcurrency { get; init; }
-        [CommandOption("--retries <COUNT>")] public int Retries { get; init; } = 3;
-        [CommandOption("--verify")] public bool Verify { get; init; }
-        [CommandOption("--skip-verification")] public bool SkipVerification { get; init; }
-        [CommandOption("--preserve-mtime")] public bool PreserveMtime { get; init; }
-        [CommandOption("--no-preallocate")] public bool NoPreallocate { get; init; }
-        [CommandOption("--stream-discovery")] public bool StreamDiscovery { get; init; }
-        [CommandOption("--resume-all")] public bool ResumeAll { get; init; }
+        [CommandArgument(0, "[path]")]
+        [UiDescription("Netdisk files, folders, or wildcard patterns to download.")]
+        public string[] Paths { get; init; } = [];
+        [CommandOption("--mode <MODE>")]
+        [UiDescription("Use direct, pcs, or stream mode. Defaults to direct.")]
+        public DownloadMode Mode { get; init; }
+        [CommandOption("--link-index <INDEX>")]
+        [UiDescription("Preferred direct link index, starting at zero.")]
+        public int LinkIndex { get; init; }
+        [CommandOption("--test")]
+        [UiDescription("Read the download without saving a local file.")]
+        public bool Test { get; init; }
+        [CommandOption("--overwrite")]
+        [UiDescription("Replace existing local destination files.")]
+        public bool Overwrite { get; init; }
+        [CommandOption("--worker-status")]
+        [UiDescription("Show download worker progress.")]
+        public bool WorkerStatus { get; init; }
+        [CommandOption("--output-directory <PATH>")]
+        [UiDescription("Local directory for downloaded files.")]
+        public string? OutputDirectory { get; init; }
+        [CommandOption("--full-path")]
+        [UiDescription("Recreate the full Netdisk path under the output directory.")]
+        public bool FullPath { get; init; }
+        [CommandOption("--executable")]
+        [UiDescription("Grant the owner execute permission on Unix when saving files.")]
+        public bool Executable { get; init; }
+        [CommandOption("--parallel <WORKERS>")]
+        [UiDescription("Maximum download workers per file.")]
+        public int? Parallel { get; init; }
+        [CommandOption("--file-concurrency <FILES>")]
+        [UiDescription("Maximum files to transfer at once.")]
+        public int? FileConcurrency { get; init; }
+        [CommandOption("--retries <COUNT>")]
+        [UiDescription("Maximum retries after a failed attempt. Defaults to 3.")]
+        public int Retries { get; init; } = 3;
+        [CommandOption("--verify")]
+        [UiDescription("Verify downloads against available file checksums.")]
+        public bool Verify { get; init; }
+        [CommandOption("--skip-verification")]
+        [UiDescription("Disable checksum verification for this download.")]
+        public bool SkipVerification { get; init; }
+        [CommandOption("--no-preserve-mtime")]
+        [UiDescription("Let the local filesystem set downloaded file modification times.")]
+        public bool NoPreserveMtime { get; init; }
+        [CommandOption("--no-preallocate")]
+        [UiDescription("Write each file progressively without reserving its full size up front.")]
+        public bool NoPreallocate { get; init; }
+        [CommandOption("--stream-discovery")]
+        [UiDescription("Begin downloading files as they are discovered.")]
+        public bool StreamDiscovery { get; init; }
+        [CommandOption("--resume-all")]
+        [UiDescription("Resume all queued downloads for the active account using their saved options.")]
+        public bool ResumeAll { get; init; }
 
         public override ValidationResult Validate() => Parallel is < 1 || FileConcurrency is < 1 || LinkIndex < 0 || Retries < 0
-            ? ValidationResult.Error("Concurrency must be positive, and link index and retries cannot be negative.")
-            : Verify && SkipVerification ? ValidationResult.Error("Choose either --verify or --skip-verification.")
+            ? ValidationResult.Error(Ui.Text("Concurrency must be positive, and link index and retries cannot be negative."))
+            : Verify && SkipVerification ? ValidationResult.Error(Ui.Text("Choose either --verify or --skip-verification."))
             : ResumeAll && (Paths.Length != 0 || Test || StreamDiscovery || OutputDirectory is not null || Mode != DownloadMode.Direct
                 || LinkIndex != 0 || Parallel.HasValue || Retries != 3 || Overwrite || Verify || SkipVerification
-                || FullPath || PreserveMtime || Executable || NoPreallocate)
-                ? ValidationResult.Error("--resume-all uses saved paths, destinations, and transfer options.")
-            : !ResumeAll && Paths.Length == 0 ? ValidationResult.Error("Specify a download path or --resume-all.")
+                || FullPath || NoPreserveMtime || Executable || NoPreallocate)
+                ? ValidationResult.Error(Ui.Text("--resume-all uses saved paths, destinations, and transfer options."))
+            : !ResumeAll && Paths.Length == 0 ? ValidationResult.Error(Ui.Text("Specify a download path or --resume-all."))
             : ValidationResult.Success();
     }
 
@@ -60,7 +96,7 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
                 TestOnly = settings.Test,
                 Overwrite = settings.Overwrite,
                 Verify = settings.Verify || !settings.SkipVerification && profile.Settings.VerifyDownloads,
-                PreserveModifiedTime = settings.PreserveMtime,
+                PreserveModifiedTime = !settings.NoPreserveMtime,
                 Executable = settings.Executable,
                 Preallocate = !settings.NoPreallocate,
             };
@@ -70,7 +106,7 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
                 QueuedDownload[] pending = await journal.ReadAllAsync(cancellationToken).ToArrayAsync(cancellationToken);
                 if (pending.Length == 0)
                 {
-                    Console.WriteLine("No pending downloads for the active account.");
+                    Console.WriteLine(Ui.Text("No pending downloads for the active account."));
                     return 0;
                 }
                 concurrency = Math.Min(concurrency, pending.Length);
@@ -128,21 +164,21 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
                         if (processed)
                             Interlocked.Add(ref totalBytes, item.Entry.Size);
 
-                        string result = processed ? settings.Test ? "Tested" : "Downloaded" : "Skipped";
+                        string result = Ui.Text(processed ? settings.Test ? "Tested" : "Downloaded" : "Skipped");
                         display.End(row, result, plain: $"{result} {path}");
                     }
                     catch (Exception error) when (error is IOException or InvalidDataException or HttpRequestException or BaiduApiException
                         or UnauthorizedAccessException or InvalidOperationException || error is OperationCanceledException && !token.IsCancellationRequested)
                     {
                         failures.Enqueue(path);
-                        string failure = DescribeFailure(error);
+                        string failure = Ui.Text(DescribeFailure(error));
                         display.End(row, failure, failed: true, plain: $"{path}: {failure}");
                     }
                 }));
 
-            Console.WriteLine($"Processed {numbers.Bytes(totalBytes)} in {numbers.Duration(timer.Elapsed.TotalSeconds)}.");
+            Console.WriteLine(Ui.Format("Processed {0} in {1}.", numbers.Bytes(totalBytes), numbers.Duration(timer.Elapsed.TotalSeconds)));
             if (!failures.IsEmpty && !display.IsInteractive)
-                Console.Error.WriteLine($"Failed downloads ({failures.Count}): {string.Join(", ", failures)}");
+                Console.Error.WriteLine(Ui.Format("Failed downloads ({0}): {1}", failures.Count, string.Join(", ", failures)));
 
             return failures.IsEmpty ? 0 : 1;
 

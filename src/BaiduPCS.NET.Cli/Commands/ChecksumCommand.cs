@@ -8,6 +8,7 @@ internal sealed class ChecksumCommand : AsyncCommand<ChecksumCommand.Settings>
     public sealed class Settings : CommonSettings
     {
         [CommandArgument(0, "<file>")]
+        [UiDescription("Local files to calculate checksums for.")]
         public string[] Files { get; init; } = [];
     }
 

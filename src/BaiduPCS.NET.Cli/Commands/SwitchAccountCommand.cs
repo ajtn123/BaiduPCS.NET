@@ -11,6 +11,7 @@ internal sealed class SwitchAccountCommand : ProfileCommand<SwitchAccountCommand
     public sealed class Settings : CommonSettings
     {
         [CommandArgument(0, "[uid-or-name]")]
+        [UiDescription("Account UID or name. Omit to choose interactively.")]
         public string? Selector { get; init; }
     }
 
@@ -49,8 +50,7 @@ internal sealed class SwitchAccountCommand : ProfileCommand<SwitchAccountCommand
             && profile.Accounts.Find(account => account.Id == id) is { } byId)
             return byId;
 
-        Account[] matches = profile.Accounts
-            .Where(account => string.Equals(account.Name, selector, StringComparison.OrdinalIgnoreCase)).ToArray();
+        Account[] matches = [.. profile.Accounts.Where(account => string.Equals(account.Name, selector, StringComparison.OrdinalIgnoreCase))];
         return matches.Length switch
         {
             1 => matches[0],

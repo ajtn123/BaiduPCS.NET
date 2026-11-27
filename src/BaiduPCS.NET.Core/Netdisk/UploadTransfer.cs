@@ -263,10 +263,10 @@ public sealed partial class NetdiskClient
             JsonElement root = await _transport.JsonAsync(HttpMethod.Get, endpoint, "upload server discovery", false, token);
             IEnumerable<string> candidates = root.Items("servers").Select(value => value.Text("server"))
                 .Concat(root.Items("server").Where(value => value.ValueKind == JsonValueKind.String).Select(value => value.GetString()!));
-            string[] hosts = candidates.Select(value => Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ? uri.Host : value)
+            string[] hosts = [.. candidates.Select(value => Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ? uri.Host : value)
                 .Where(host => (host.EndsWith(".baidu.com", StringComparison.OrdinalIgnoreCase)
                     || host.EndsWith(".baidupcs.com", StringComparison.OrdinalIgnoreCase)) && Uri.CheckHostName(host) == UriHostNameType.Dns)
-                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                .Distinct(StringComparer.OrdinalIgnoreCase)];
             return hosts.Length == 0 ? null : hosts[Random.Shared.Next(hosts.Length)];
         }
         catch (Exception error) when (error is BaiduApiException or HttpRequestException or InvalidDataException)

@@ -8,9 +8,15 @@ internal sealed class RenameFileCommand : RemoteCommand<RenameFileCommand.Settin
 {
     public sealed class Settings : RemotePaths
     {
-        [CommandOption("--pattern <REGEX>")] public string? Pattern { get; init; }
-        [CommandOption("--replacement <TEXT>")] public string? Replacement { get; init; }
-        [CommandOption("--dry-run")] public bool DryRun { get; init; }
+        [CommandOption("--pattern <REGEX>")]
+        [UiDescription("Match file or folder names with a regular expression.")]
+        public string? Pattern { get; init; }
+        [CommandOption("--replacement <TEXT>")]
+        [UiDescription("Replacement text for the regular expression match.")]
+        public string? Replacement { get; init; }
+        [CommandOption("--dry-run")]
+        [UiDescription("Preview renamed paths without changing them.")]
+        public bool DryRun { get; init; }
 
         public override ValidationResult Validate() => (Pattern, Replacement, Paths.Length) switch
         {

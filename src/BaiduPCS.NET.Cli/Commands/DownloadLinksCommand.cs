@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using BaiduPCS.Netdisk;
 using Spectre.Console.Cli;
 
@@ -9,7 +8,7 @@ internal sealed class DownloadLinksCommand : RemoteCommand<DownloadLinksCommand.
     public sealed class Settings : RemotePaths
     {
         [CommandOption("--pan")]
-        [Description("Use the Pan web endpoint. Links can require a signed-in session.")]
+        [UiDescription("Use the Pan web endpoint. Links can require a signed-in session.")]
         public bool Pan { get; init; }
     }
 
@@ -28,7 +27,7 @@ internal sealed class DownloadLinksCommand : RemoteCommand<DownloadLinksCommand.
                 int result = 0;
                 foreach (string path in paths)
                 {
-                    Uri[] addresses = byPath[path].SelectMany(id => links[id]).ToArray();
+                    Uri[] addresses = [.. byPath[path].SelectMany(id => links[id])];
                     if (addresses.Length == 0)
                     {
                         Console.Error.WriteLine($"No Pan download link for {path}.");

@@ -7,6 +7,7 @@ internal sealed class MatchCommand : RemoteCommand<MatchCommand.Settings>
     public sealed class Settings : CommonSettings
     {
         [CommandArgument(0, "<pattern>")]
+        [UiDescription("Netdisk wildcard pattern to expand.")]
         public string Pattern { get; init; } = "";
     }
 

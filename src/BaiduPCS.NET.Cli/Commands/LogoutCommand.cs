@@ -9,6 +9,7 @@ internal sealed class LogoutCommand : ProfileCommand<LogoutCommand.Settings>
     public sealed class Settings : CommonSettings
     {
         [CommandOption("--yes")]
+        [UiDescription("Remove the saved account without prompting.")]
         public bool Yes { get; init; }
     }
 

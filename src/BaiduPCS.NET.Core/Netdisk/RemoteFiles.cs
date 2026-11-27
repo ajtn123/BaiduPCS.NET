@@ -234,7 +234,7 @@ public sealed partial class NetdiskClient : IDisposable
         if (requireComplete && field.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.Object
             || item.Number("isdir", -1) is not (0 or 1) || item.Number("isdir") == 0 && item.Number("size", -1) < 0))
             throw new InvalidDataException("Baidu returned an incomplete directory listing.");
-        return field.EnumerateArray().Where(item => item.ValueKind != JsonValueKind.Null).Select(ReadEntry).ToArray();
+        return [.. field.EnumerateArray().Where(item => item.ValueKind != JsonValueKind.Null).Select(ReadEntry)];
     }
 
     private static RemoteEntry ReadEntry(JsonElement item)

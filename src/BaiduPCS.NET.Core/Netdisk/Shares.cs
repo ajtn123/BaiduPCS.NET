@@ -98,7 +98,7 @@ public sealed partial class NetdiskClient
         for (int index = 1; ; index++)
         {
             JsonElement listing = await ListSharePageAsync(session, null, index, cancellationToken);
-            JsonElement[] batch = listing.Items("list").ToArray();
+            JsonElement[] batch = [.. listing.Items("list")];
             int before = items.Count;
             foreach (JsonElement value in batch)
             {
@@ -112,7 +112,7 @@ public sealed partial class NetdiskClient
                 throw new InvalidDataException("Baidu did not return a complete list of shared files.");
         }
 
-        long[] selected = (requestedIds.Count == 0 ? items.Keys : requestedIds).Distinct().ToArray();
+        long[] selected = [.. (requestedIds.Count == 0 ? items.Keys : requestedIds).Distinct()];
         if (selected.Length == 0)
             throw new InvalidOperationException("The share contains no selectable files.");
 
@@ -175,7 +175,7 @@ public sealed partial class NetdiskClient
                 }
 
                 int added = 0;
-                JsonElement[] batch = result.Items("list").ToArray();
+                JsonElement[] batch = [.. result.Items("list")];
                 foreach (JsonElement item in batch)
                 {
                     string path = item.Text("path");
@@ -303,9 +303,9 @@ public sealed partial class NetdiskClient
 
         string Parameter(string key)
         {
-            string[] values = match.Groups["query"].Value.Split('&')
+            string[] values = [.. match.Groups["query"].Value.Split('&')
                 .Where(part => part.StartsWith(key + "=", StringComparison.OrdinalIgnoreCase))
-                .Select(part => part[(key.Length + 1)..]).ToArray();
+                .Select(part => part[(key.Length + 1)..])];
             if (values is not [string value] || value.Length is < 1 or > 20
                 || !value.All(char.IsAsciiDigit) || !ulong.TryParse(value, out ulong number) || number == 0)
                 throw new ArgumentException("A numeric share link requires one positive shareid and uk.");

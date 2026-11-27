@@ -46,7 +46,7 @@ internal sealed class ShellCompletions
         int start = words.Count > 1 && words[0].Value == "help" ? 1 : 0;
         string parent = string.Join(' ', words.Skip(start).Take(words.Count - start - 1).Select(word => word.Value));
         return _commands.TryGetValue(parent, out List<string>? choices)
-            ? choices.Where(word => word.StartsWith(words[^1].Value, StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray()
+            ? [.. choices.Where(word => word.StartsWith(words[^1].Value, StringComparison.Ordinal)).Order(StringComparer.Ordinal)]
             : null;
     }
 }

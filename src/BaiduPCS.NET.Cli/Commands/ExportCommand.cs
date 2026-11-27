@@ -14,13 +14,27 @@ internal sealed class ExportCommand : RemoteCommand<ExportCommand.Settings>
 
     public sealed class Settings : CommonSettings
     {
-        [CommandArgument(0, "[path]")] public string[] Paths { get; init; } = [];
-        [CommandOption("--root <PATH>")] public string? Root { get; init; }
-        [CommandOption("--out <FILE>")] public string? Output { get; init; }
-        [CommandOption("--stdout")] public bool StandardOutput { get; init; }
-        [CommandOption("--recursive")] public bool Recursive { get; init; }
-        [CommandOption("--format <FORMAT>")] public string Format { get; init; } = "manifest";
-        [CommandOption("--retries <COUNT>")] public int Retries { get; init; } = 3;
+        [CommandArgument(0, "[path]")]
+        [UiDescription("Netdisk paths to export. Defaults to the current folder.")]
+        public string[] Paths { get; init; } = [];
+        [CommandOption("--root <PATH>")]
+        [UiDescription("Set the root prefix written to the exported records.")]
+        public string? Root { get; init; }
+        [CommandOption("--out <FILE>")]
+        [UiDescription("Append records to this local file.")]
+        public string? Output { get; init; }
+        [CommandOption("--stdout")]
+        [UiDescription("Write export records to standard output.")]
+        public bool StandardOutput { get; init; }
+        [CommandOption("--recursive")]
+        [UiDescription("Include files in subfolders.")]
+        public bool Recursive { get; init; }
+        [CommandOption("--format <FORMAT>")]
+        [UiDescription("Choose manifest or checksum-link. Defaults to manifest.")]
+        public string Format { get; init; } = "manifest";
+        [CommandOption("--retries <COUNT>")]
+        [UiDescription("Maximum retries after a failed attempt. Defaults to 3.")]
+        public int Retries { get; init; } = 3;
 
         public override ValidationResult Validate() => Format is not ("manifest" or "checksum-link")
             ? ValidationResult.Error("Format must be manifest or checksum-link.")

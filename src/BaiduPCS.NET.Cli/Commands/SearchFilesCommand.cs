@@ -7,18 +7,23 @@ internal sealed class SearchFilesCommand : RemoteCommand<SearchFilesCommand.Sett
     public sealed class Settings : CommonSettings
     {
         [CommandArgument(0, "<keyword>")]
+        [UiDescription("Text to search for in file and folder names.")]
         public string Keyword { get; init; } = "";
 
         [CommandOption("--path <PATH>")]
+        [UiDescription("Netdisk folder to search. Defaults to the current folder.")]
         public string Path { get; init; } = ".";
 
         [CommandOption("--recursive")]
+        [UiDescription("Include files in subfolders.")]
         public bool Recursive { get; init; }
 
         [CommandOption("--totals")]
+        [UiDescription("Include file IDs, timestamps, and checksums.")]
         public bool Totals { get; init; }
 
         [CommandOption("--json")]
+        [UiDescription("Write results as JSON.")]
         public bool Json { get; init; }
     }
 

@@ -10,6 +10,7 @@ internal sealed partial class SetConfigCommand : ProfileCommand<SetConfigCommand
     public sealed class Settings : CommonSettings
     {
         [CommandArgument(0, "<key=value>")]
+        [UiDescription("One or more settings in key=value format.")]
         public string[] Assignments { get; init; } = [];
     }
 

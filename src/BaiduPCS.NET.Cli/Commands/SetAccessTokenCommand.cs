@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using BaiduPCS.Configuration;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -10,7 +9,7 @@ internal sealed class SetAccessTokenCommand : ProfileCommand<SetAccessTokenComma
     public sealed class Settings : CommonSettings
     {
         [CommandOption("--stdin")]
-        [Description("Read the token from standard input.")]
+        [UiDescription("Read the token from standard input.")]
         public bool StandardInput { get; init; }
     }
 

@@ -14,7 +14,7 @@ public sealed partial class NetdiskClient
             if (!GlobSegment.IsPattern(segment))
             {
                 string literal = segment.StartsWith(@"\!(", StringComparison.Ordinal) ? segment[1..] : segment;
-                paths = paths.Select(parent => RemotePath.Resolve(parent, literal)).ToList();
+                paths = [.. paths.Select(parent => RemotePath.Resolve(parent, literal))];
                 continue;
             }
 

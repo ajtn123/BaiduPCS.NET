@@ -7,9 +7,11 @@ internal sealed class ChangeDirectoryCommand : RemoteCommand<ChangeDirectoryComm
     public sealed class Settings : CommonSettings
     {
         [CommandArgument(0, "<path>")]
+        [UiDescription("Netdisk folder to make current.")]
         public string Path { get; init; } = "";
 
         [CommandOption("--list")]
+        [UiDescription("List the folder after switching to it.")]
         public bool List { get; init; }
     }
 

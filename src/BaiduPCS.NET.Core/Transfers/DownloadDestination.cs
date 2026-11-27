@@ -55,7 +55,7 @@ public static class DownloadDestination
         if (name is "" or "." or "..")
             throw new ArgumentException("A remote file name resolved to an invalid local path.");
 
-        string safe = new(name.Select(character => InvalidCharacters.Contains(character) ? '_' : character).ToArray());
+        string safe = new([.. name.Select(character => InvalidCharacters.Contains(character) ? '_' : character)]);
         if (OperatingSystem.IsWindows())
         {
             safe = safe.TrimEnd(' ', '.');

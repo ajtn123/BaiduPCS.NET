@@ -130,7 +130,7 @@ public sealed partial class NetdiskClient
         }
 
         if (options.PreserveModifiedTime)
-            File.SetLastWriteTimeUtc(part, entry.Modified.UtcDateTime);
+            File.SetLastWriteTimeUtc(part, (entry.LocalModified ?? entry.Modified).UtcDateTime);
         if (options.Executable && !OperatingSystem.IsWindows())
             File.SetUnixFileMode(part, File.GetUnixFileMode(part) | UnixFileMode.UserExecute);
         cancellationToken.ThrowIfCancellationRequested();

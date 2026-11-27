@@ -37,7 +37,7 @@ internal sealed class ShellCommand : ProfileCommand<CommonSettings>
             string[] args;
             try
             {
-                args = ShellArguments.Parse(line).Select(token => token.Value).ToArray();
+                args = [.. ShellArguments.Parse(line).Select(token => token.Value)];
             }
             catch (FormatException error)
             {
@@ -89,7 +89,7 @@ internal sealed class ShellCommand : ProfileCommand<CommonSettings>
         ShellArgument current = words[^1];
         string[]? commands = completions.Matches(words);
         if (commands is not null)
-            return commands.Select(word => line[..current.Start] + word + " ").ToArray();
+            return [.. commands.Select(word => line[..current.Start] + word + " ")];
         if (profile.ActiveAccount is not { } account
             || !TakesRemotePaths(completions.CanonicalName(words[0].Value), words) || current.Value.StartsWith('-'))
             return [];
@@ -143,7 +143,7 @@ internal sealed class ShellCommand : ProfileCommand<CommonSettings>
     {
         try
         {
-            return File.Exists(path) ? File.ReadLines(path).TakeLast(HistoryLimit).ToList() : [];
+            return File.Exists(path) ? [.. File.ReadLines(path).TakeLast(HistoryLimit)] : [];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

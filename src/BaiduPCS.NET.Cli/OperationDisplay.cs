@@ -44,7 +44,7 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
         {
             if (_finished.Count != 0)
             {
-                var table = CreateTable().AddColumns(itemHeading, "Result");
+                var table = CreateTable().AddColumns(Ui.Text(itemHeading), Ui.Text("Result"));
                 foreach (Item row in _items.Where(item => item.Result is not null))
                 {
                     string result = Markup.Escape(row.Result!);
@@ -101,7 +101,7 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
             if (_console is null && showWorker && elapsed - item.LastLog >= 1)
             {
                 item.LastLog = elapsed;
-                string worker = part is >= 0 ? $" part {part}" : "";
+                string worker = part is >= 0 ? Ui.Format(" part {0}", part) : "";
                 Console.Error.WriteLine($"{item.Name}{worker}: {TransferText(item)}, {_numbers.Speed(rate.At(elapsed))}");
             }
         }
@@ -114,7 +114,7 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
             lock (_gate)
             {
                 _active.Remove(item);
-                item.Result = message;
+                item.Result = Ui.Text(message);
                 item.Failed = failed;
                 item.Rate = null;
                 _finished.Add(item);
@@ -196,13 +196,13 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
                 shown++;
             }
 
-            return overflow ? new Rows(table, new Text($"+ {_items.Count - shown} more")) : table;
+            return overflow ? new Rows(table, new Text(Ui.Format("+ {0} more", _items.Count - shown))) : table;
         }
     }
 
     private static Table CreateTable() => new Table().Border(TableBorder.Simple).Expand();
     private static Text Cell(string text) => new(text) { Overflow = Overflow.Ellipsis };
-    private static TableColumn Column(string title, int width) => new TableColumn(title).Width(width).NoWrap();
+    private static TableColumn Column(string title, int width) => new TableColumn(Ui.Text(title)).Width(width).NoWrap();
     private static double Elapsed(Item item) => Stopwatch.GetElapsedTime(item.StartedAt).TotalSeconds;
 
     private string TransferText(Item item) => settings.RawNumbers
@@ -212,11 +212,11 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
     private static IRenderable Progress(Item item, int width)
     {
         if (item.Result is { } result)
-            return item.Failed ? new Markup("[red]Failed[/]") : Cell(result);
+            return item.Failed ? new Text(Ui.Text("Failed"), new Style(Color.Red)) : Cell(result);
         if (item.Pending is not null)
-            return new Text("Pending");
+            return new Text(Ui.Text("Pending"));
         if (item.Total is not > 0)
-            return new Text("Working…");
+            return new Text(Ui.Text("Working…"));
 
         double fraction = (double)item.Completed / item.Total.Value;
         int filled = (int)(width * fraction);

@@ -301,8 +301,10 @@ public sealed class NetdiskClientTests
         Assert.Equal(1, tasks[1].Result);
     }
 
-    [Fact]
-    public async Task ResumesMultipartUploadAndFinalizesInPartOrder()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ResumesMultipartUploadAndFinalizesInPartOrder(bool preserveMtime)
     {
         const int firstSize = 4 * 1024 * 1024;
         byte[] bytes = new byte[firstSize + 2];
@@ -314,6 +316,8 @@ public sealed class NetdiskClientTests
         {
             string source = Path.Combine(directory, "source");
             await File.WriteAllBytesAsync(source, bytes, TestContext.Current.CancellationToken);
+            const long modified = 1_700_000_000;
+            File.SetLastWriteTimeUtc(source, DateTimeOffset.FromUnixTimeSeconds(modified).UtcDateTime);
             bool interrupted = true;
             int precreates = 0;
             var confirmed = new List<int>();
@@ -325,6 +329,8 @@ public sealed class NetdiskClientTests
                 if (uri.AbsolutePath == "/api/precreate")
                 {
                     precreates++;
+                    string parameters = await request.Content!.ReadAsStringAsync(token);
+                    Assert.Equal(preserveMtime, parameters.Contains("local_mtime=1700000000", StringComparison.Ordinal));
                     return Json(new { return_type = 1, uploadid = "fixture-session" });
                 }
 
@@ -332,6 +338,7 @@ public sealed class NetdiskClientTests
                 {
                     string parameters = Uri.UnescapeDataString(await request.Content!.ReadAsStringAsync(token));
                     Assert.Contains($"block_list=[\"{firstHash}\",\"{lastHash}\"]", parameters);
+                    Assert.Equal(preserveMtime, parameters.Contains("local_mtime=1700000000", StringComparison.Ordinal));
                     return Json(new { errno = 0 });
                 }
 
@@ -348,7 +355,7 @@ public sealed class NetdiskClientTests
             });
             using var client = new NetdiskClient(new ClientSettings { FixedPcsHost = true },
                 new Account { Id = 1, Name = "Fixture" }, handler);
-            var options = new UploadOptions { Parallel = 1, Retries = 0, SkipRapidCheck = true };
+            var options = new UploadOptions { Parallel = 1, Retries = 0, SkipRapidCheck = true, PreserveModifiedTime = preserveMtime };
             await Assert.ThrowsAsync<BaiduApiException>(() => client.UploadAsync(source, "/file", directory, options,
                 cancellationToken: TestContext.Current.CancellationToken));
             interrupted = false;
@@ -361,6 +368,40 @@ public sealed class NetdiskClientTests
         finally
         {
             Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ControlsDownloadedFileModificationTime(bool preserve, bool hasClientTime)
+    {
+        DateTimeOffset serverTime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_001);
+        DateTimeOffset clientTime = serverTime.AddDays(-1);
+        var entry = new RemoteEntry(1, 0, "/file", "file", false, 3, serverTime, serverTime, "", [])
+        {
+            LocalModified = hasClientTime ? clientTime : null,
+        };
+        using var handler = new FixtureHandler((_, _) =>
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent("abc"u8.ToArray()) });
+        using var client = Client(handler);
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("baidupcs-mtime-test-");
+        try
+        {
+            string destination = Path.Combine(directory.FullName, "file");
+            var options = new DownloadOptions { Mode = DownloadMode.Pcs, PreserveModifiedTime = preserve };
+            Assert.True(await client.DownloadAsync(entry, destination, options, cancellationToken: TestContext.Current.CancellationToken));
+            DateTime actual = File.GetLastWriteTimeUtc(destination);
+            DateTime expected = (hasClientTime ? clientTime : serverTime).UtcDateTime;
+            if (preserve)
+                Assert.Equal(expected, actual);
+            else
+                Assert.NotEqual(expected, actual);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
         }
     }
 

@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using BaiduPCS.Netdisk;
 using Spectre.Console.Cli;
 
@@ -9,20 +8,23 @@ internal sealed class ListFilesCommand : RemoteCommand<ListFilesCommand.Settings
     public sealed class Settings : OptionalRemotePath
     {
         [CommandOption("--totals")]
-        [Description("Include file IDs, timestamps, and checksums.")]
+        [UiDescription("Include file IDs, timestamps, and checksums.")]
         public bool Totals { get; init; }
 
         [CommandOption("--sort <FIELD>")]
+        [UiDescription("Sort by name, time, or size. Defaults to name.")]
         public FileSort Sort { get; init; }
 
         [CommandOption("--descending")]
+        [UiDescription("Reverse the selected sort order.")]
         public bool Descending { get; init; }
 
         [CommandOption("--json")]
+        [UiDescription("Write results as JSON.")]
         public bool Json { get; init; }
 
         [CommandOption("--folder-sizes")]
-        [Description("Rank immediate subdirectories by their recursive size.")]
+        [UiDescription("Rank immediate subdirectories by their recursive size.")]
         public bool FolderSizes { get; init; }
     }
 

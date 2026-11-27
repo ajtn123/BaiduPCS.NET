@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using BaiduPCS.Configuration;
 using BaiduPCS.Netdisk;
 using Spectre.Console;
@@ -10,23 +9,33 @@ internal sealed class LoginCommand : ProfileCommand<LoginCommand.Settings>
 {
     public sealed class Settings : CommonSettings
     {
-        [CommandOption("--username <NAME>"), Description("Unsupported password sign-in.")]
+        [CommandOption("--username <NAME>")]
+        [UiDescription("Unsupported password sign-in.")]
         public string? Username { get; init; }
-        [CommandOption("--password-stdin"), Description("Unsupported password sign-in.")]
+        [CommandOption("--password-stdin")]
+        [UiDescription("Unsupported password sign-in.")]
         public bool PasswordStdin { get; init; }
-        [CommandOption("--cookies <COOKIE-HEADER>"), Description("Sign in using browser cookies.")]
+        [CommandOption("--cookies <COOKIE-HEADER>")]
+        [UiDescription("Sign in using browser cookies.")]
         public string? Cookies { get; init; }
-        [CommandOption("--cookies-stdin"), Description("Read browser cookies from standard input.")]
+        [CommandOption("--cookies-stdin")]
+        [UiDescription("Read browser cookies from standard input.")]
         public bool CookiesStdin { get; init; }
-        [CommandOption("--bduss <TOKEN>"), Description("Sign in using BDUSS from browser cookies.")]
+        [CommandOption("--bduss <TOKEN>")]
+        [UiDescription("Sign in using BDUSS from browser cookies.")]
         public string? Bduss { get; init; }
-        [CommandOption("--bduss-stdin"), Description("Read browser-derived BDUSS from standard input.")]
+        [CommandOption("--bduss-stdin")]
+        [UiDescription("Read browser-derived BDUSS from standard input.")]
         public bool BdussStdin { get; init; }
-        [CommandOption("--ptoken <TOKEN>"), Description("Optional browser-derived PTOKEN for BDUSS sign-in.")]
+        [CommandOption("--ptoken <TOKEN>")]
+        [UiDescription("Optional browser-derived PTOKEN for BDUSS sign-in.")]
         public string? Ptoken { get; init; }
-        [CommandOption("--stoken <TOKEN>"), Description("Optional browser-derived STOKEN for BDUSS sign-in.")]
+        [CommandOption("--stoken <TOKEN>")]
+        [UiDescription("Optional browser-derived STOKEN for BDUSS sign-in.")]
         public string? Stoken { get; init; }
-        [CommandOption("--manual-uid <UID>")] public ulong? ManualUid { get; init; }
+        [CommandOption("--manual-uid <UID>")]
+        [UiDescription("Supply a numeric account UID with the configured manual account name.")]
+        public ulong? ManualUid { get; init; }
 
         internal bool IsCookieLogin => Cookies is not null || CookiesStdin;
         internal bool IsTokenLogin => Bduss is not null || BdussStdin;

@@ -36,7 +36,7 @@ public sealed partial class NetdiskClient
 
     public async Task<IReadOnlyList<OfflineTask>> QueryOfflineTasksAsync(IEnumerable<long> ids, CancellationToken cancellationToken = default)
     {
-        long[] requested = ids.Distinct().ToArray();
+        long[] requested = [.. ids.Distinct()];
         if (requested.Length == 0 || requested.Any(id => id <= 0))
             throw new ArgumentException("Specify positive offline task IDs.");
 

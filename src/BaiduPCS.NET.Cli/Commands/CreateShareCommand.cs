@@ -7,9 +7,15 @@ internal sealed class CreateShareCommand : RemoteCommand<CreateShareCommand.Sett
 {
     public sealed class Settings : RemotePaths
     {
-        [CommandOption("--code <CODE>")] public string? Code { get; init; }
-        [CommandOption("--days <DAYS>")] public int Days { get; init; }
-        [CommandOption("--combined")] public bool Combined { get; init; }
+        [CommandOption("--code <CODE>")]
+        [UiDescription("Set the extraction code for the share.")]
+        public string? Code { get; init; }
+        [CommandOption("--days <DAYS>")]
+        [UiDescription("Set the share lifetime in days. Defaults to 0.")]
+        public int Days { get; init; }
+        [CommandOption("--combined")]
+        [UiDescription("Include the extraction code in the printed URL.")]
+        public bool Combined { get; init; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)

@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Reflection;
 using BaiduPCS.Cli;
 using BaiduPCS.Cli.Commands;
+using Spectre.Console.Cli;
 
 namespace BaiduPCS.Tests;
 
@@ -9,8 +11,7 @@ public sealed class ShellTests
     [Fact]
     public void PreservesSpacesEmptyArgumentsAndWindowsPaths()
     {
-        string[] arguments = ShellArguments.Parse("run -- \"two words.exe\" '' C:\\test\\file path\\ with\\ spaces `unicode 中文`")
-            .Select(argument => argument.Value).ToArray();
+        string[] arguments = [.. ShellArguments.Parse("run -- \"two words.exe\" '' C:\\test\\file path\\ with\\ spaces `unicode 中文`").Select(argument => argument.Value)];
 
         Assert.Equal(["run", "--", "two words.exe", "", @"C:\test\file", "path with spaces", "unicode 中文"], arguments);
     }
@@ -44,6 +45,35 @@ public sealed class ShellTests
         {
             CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(culture);
             Assert.Equal(description, Ui.Text("List a remote directory."));
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = original;
+        }
+    }
+
+    [Fact]
+    public void EveryCommandArgumentAndOptionHasLocalizedHelp()
+    {
+        PropertyInfo[] parameters = [.. typeof(CommonSettings).Assembly.GetTypes()
+            .Where(type => typeof(CommonSettings).IsAssignableFrom(type))
+            .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            .Where(property => property.GetCustomAttribute<CommandOptionAttribute>() is not null
+                || property.GetCustomAttribute<CommandArgumentAttribute>() is not null)];
+        Assert.NotEmpty(parameters);
+
+        CultureInfo original = CultureInfo.CurrentUICulture;
+        try
+        {
+            foreach (PropertyInfo property in parameters)
+            {
+                UiDescriptionAttribute description = Assert.IsType<UiDescriptionAttribute>(property.GetCustomAttribute<UiDescriptionAttribute>());
+                CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("en-US");
+                string english = description.Description;
+                Assert.False(string.IsNullOrWhiteSpace(english), property.ToString());
+                CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("zh-Hans");
+                Assert.NotEqual(english, description.Description);
+            }
         }
         finally
         {

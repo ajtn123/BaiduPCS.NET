@@ -71,12 +71,12 @@ internal partial class Program
                 {
                     Console.Error.WriteLine(error is FormatException or OverflowException
                         ? Ui.Text("Invalid value or number out of range.")
-                        : error.Message);
+                        : Ui.Text(error.Message));
                     return 2;
                 }
 
                 Console.Error.WriteLine(error is InvalidOperationException or InvalidDataException or BaiduApiException
-                    ? error.Message
+                    ? Ui.Text(error.Message)
                     : $"Operation failed ({error.GetType().Name}).");
                 return 1;
             });
@@ -110,12 +110,12 @@ internal partial class Program
             completions.Register<TreeCommand>(config, "tree").WithDescription(Ui.Text("Show a remote directory tree."));
             completions.Register<CreateDirectoryCommand>(config, "mkdir").WithDescription(Ui.Text("Create remote directories."));
             completions.Register<RemoveFilesCommand>(config, "remove", "rm").WithDescription(Ui.Text("Remove files or directories from the drive."));
-            completions.Register<CopyFilesCommand>(config, "copy", "cp").WithDescription(Ui.Text("Copy files or directories on the drive."));
-            completions.Register<MoveFilesCommand>(config, "move", "mv").WithDescription(Ui.Text("Move files or directories on the drive."));
-            completions.Register<RenameFileCommand>(config, "rename").WithDescription(Ui.Text("Rename a file or directory within its parent."));
+            completions.Register<CopyFilesCommand>(config, "copy", "cp").WithDescription(Ui.Text("Copy files or folders on Netdisk. Supply the sources followed by the destination."));
+            completions.Register<MoveFilesCommand>(config, "move", "mv").WithDescription(Ui.Text("Move files or folders on Netdisk. Supply the sources followed by the destination."));
+            completions.Register<RenameFileCommand>(config, "rename").WithDescription(Ui.Text("Rename files or folders by supplying a source and a new name, or use a regular expression."));
             completions.Register<DownloadLinksCommand>(config, "download-links", "locate").WithDescription(Ui.Text("Resolve direct or Pan web download links."));
-            completions.Register<DownloadCommand>(config, "download", "d").WithDescription(Ui.Text("Download files and directory trees from Baidu Netdisk."));
-            completions.Register<UploadCommand>(config, "upload", "u").WithDescription(Ui.Text("Upload local files or directory trees to a remote directory."));
+            completions.Register<DownloadCommand>(config, "download", "d").WithDescription(Ui.Text("Download files and directory trees from Baidu Netdisk. File modification times are preserved by default."));
+            completions.Register<UploadCommand>(config, "upload", "u").WithDescription(Ui.Text("Upload local files or directory trees to Netdisk. File modification times are preserved by default."));
             completions.Register<SyncCommand>(config, "sync").WithDescription(Ui.Text("Preview and synchronize a local folder with a Netdisk folder."));
             completions.Register<ChecksumCommand>(config, "checksum").WithDescription(Ui.Text("Calculate Baidu file checksums and checksum links."));
             completions.Register<ExportCommand>(config, "export").WithDescription(Ui.Text("Export remote file checksums and directory structure."));

@@ -15,7 +15,9 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
 
     public sealed class Settings : CommonSettings
     {
-        [CommandOption("--yes")] public bool Yes { get; init; }
+        [CommandOption("--yes")]
+        [UiDescription("Install the update without prompting.")]
+        public bool Yes { get; init; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -133,7 +135,7 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
                 {
                     if ((File.GetAttributes(stage) & FileAttributes.ReparsePoint) != 0)
                         continue;
-                    string[] contents = Directory.EnumerateFileSystemEntries(stage).Take(2).ToArray();
+                    string[] contents = [.. Directory.EnumerateFileSystemEntries(stage).Take(2)];
                     if (contents is not [var helper] || Path.GetFileName(helper) != HelperName
                         || (File.GetAttributes(helper) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
                         continue;

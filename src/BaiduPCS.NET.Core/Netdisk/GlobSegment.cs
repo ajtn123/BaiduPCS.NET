@@ -18,7 +18,7 @@ public sealed partial class GlobSegment
         var options = RegexOptions.NonBacktracking | RegexOptions.Singleline | RegexOptions.CultureInvariant;
         if (ignoreCase)
             options |= RegexOptions.IgnoreCase;
-        _matchers = alternatives.Select(alternative => CreateMatcher(alternative, options)).ToArray();
+        _matchers = [.. alternatives.Select(alternative => CreateMatcher(alternative, options))];
     }
 
     public bool Matches(string name) => _matchers.Any(matcher => matcher.IsMatch(name)) != _negate;

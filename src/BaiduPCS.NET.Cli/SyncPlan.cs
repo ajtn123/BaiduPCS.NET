@@ -257,7 +257,7 @@ internal sealed record SyncPlan(string LocalRoot, string RemoteRoot, IReadOnlyLi
             if (segments.Any(segment => segment is "" or "." or ".."))
                 throw new ArgumentException("Sync globs require a filename or a relative path with '/' separators.");
             _filenameOnly = segments.Length == 1 && segments[0] != "**";
-            _segments = segments.Select(segment => segment == "**" ? null : new GlobSegment(segment)).ToArray();
+            _segments = [.. segments.Select(segment => segment == "**" ? null : new GlobSegment(segment))];
         }
 
         internal bool Matches(string relative)

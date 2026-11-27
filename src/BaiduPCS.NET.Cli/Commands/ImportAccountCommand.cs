@@ -9,6 +9,7 @@ internal sealed class ImportAccountCommand : ProfileCommand<ImportAccountCommand
     public sealed class Settings : CommonSettings
     {
         [CommandArgument(0, "[config-file]")]
+        [UiDescription("Path to pcs_config.json. Omit it to use the standard BaiduPCS-Go location.")]
         public string? ConfigFile { get; init; }
     }
 

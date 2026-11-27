@@ -37,7 +37,7 @@ public sealed partial class NetdiskClient
     public async Task<IReadOnlyList<PanDownloadLink>> LocatePanDownloadAsync(IEnumerable<long> ids,
         CancellationToken cancellationToken = default)
     {
-        long[] fileIds = ids.Distinct().ToArray();
+        long[] fileIds = [.. ids.Distinct()];
         if (fileIds.Length == 0)
             return [];
 

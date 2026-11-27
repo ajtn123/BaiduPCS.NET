@@ -7,7 +7,7 @@ internal sealed class RunProcessCommand : AsyncCommand<CommonSettings>
 {
     public override async Task<int> ExecuteAsync(CommandContext context, CommonSettings settings, CancellationToken cancellationToken)
     {
-        string[] arguments = context.Remaining.Raw.ToArray();
+        string[] arguments = [.. context.Remaining.Raw];
         if (arguments.Length == 0)
             throw new ArgumentException("Use 'run -- EXECUTABLE ARG...' to run a local process.");
 
