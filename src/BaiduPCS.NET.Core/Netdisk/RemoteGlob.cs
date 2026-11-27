@@ -14,20 +14,26 @@ public sealed partial class NetdiskClient
         for (int index = 0; index < segments.Length; index++)
         {
             string segment = segments[index];
-            if (!segment.Contains('*') && !segment.Contains('?'))
+            bool negate = segment.StartsWith("!(", StringComparison.Ordinal) && segment.EndsWith(')');
+            if (!negate && !segment.Contains('*') && !segment.Contains('?'))
             {
-                paths = paths.Select(parent => RemotePath.Resolve(parent, segment)).ToList();
+                string literal = segment.StartsWith(@"\!(", StringComparison.Ordinal) ? segment[1..] : segment;
+                paths = paths.Select(parent => RemotePath.Resolve(parent, literal)).ToList();
                 continue;
             }
 
-            Regex matcher = CreateMatcher(segment);
+            string[] alternatives = negate ? Regex.Split(segment[2..^1], @"(?<!\\)\|") : [segment];
+            if (alternatives.Any(string.IsNullOrEmpty))
+                throw new ArgumentException("Negated globs require nonempty alternatives, such as !(draft*|*.tmp).");
+            Regex[] matchers = alternatives.Select(CreateMatcher).ToArray();
             bool remaining = index < segments.Length - 1;
             var matches = new List<string>();
             foreach (string parent in paths)
             {
                 await foreach (RemoteEntry entry in ListAsync(parent, cancellationToken: cancellationToken))
                 {
-                    if ((!remaining || entry.IsDirectory) && matcher.IsMatch(entry.Name) && RemotePath.Parent(entry.Path) == parent)
+                    if ((!remaining || entry.IsDirectory) && matchers.Any(matcher => matcher.IsMatch(entry.Name)) != negate
+                        && RemotePath.Parent(entry.Path) == parent)
                         matches.Add(entry.Path);
                 }
             }

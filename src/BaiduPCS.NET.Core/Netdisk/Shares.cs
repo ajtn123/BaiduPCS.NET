@@ -214,13 +214,25 @@ public sealed partial class NetdiskClient
 
     private async Task<ShareSession> OpenShareAsync(string input, string? code, CancellationToken cancellationToken)
     {
-        (string token, string? embeddedCode) = ParseShare(input);
-        code ??= embeddedCode;
+        LegacyShare? legacy = ParseLegacyShare(input);
+        string? shortId = null;
+        Uri share;
+        if (legacy is null)
+        {
+            (string token, string? embeddedCode) = ParseShare(input);
+            shortId = token[1..];
+            code ??= embeddedCode;
+            share = BaiduTransport.Build("https", BaiduTransport.PanHost, $"/s/{token}");
+        }
+        else
+        {
+            code ??= ReadShareCode(input);
+            share = ShareUrl("link", ("shareid", legacy.Id), ("uk", legacy.Owner));
+        }
         if (code is not null)
             ValidateExtractionCode(code);
 
-        Uri share = BaiduTransport.Build("https", BaiduTransport.PanHost, $"/s/{token}");
-        SharePageState page = await ReadSharePageAsync(share, _transport.PanPage("/disk/home"), cancellationToken);
+        SharePageState page = await ReadSharePageAsync(share, _transport.PanPage("/disk/home"), cancellationToken, legacy);
         if (code is not null)
         {
             Uri verify = ShareUrl("verify", ("shareid", page.ShareId), ("clienttype", "1"), ("uk", page.Owner),
@@ -234,18 +246,23 @@ public sealed partial class NetdiskClient
             });
             await _transport.JsonAsync(HttpMethod.Post, verify, "share verification", true, cancellationToken, form,
                 configure: request => request.Headers.Referrer = share);
-            page = await ReadSharePageAsync(share, ShareUrl("init", ("surl", token[1..])), cancellationToken);
+            Uri referer = shortId is null ? share : ShareUrl("init", ("surl", shortId));
+            page = await ReadSharePageAsync(share, referer, cancellationToken, legacy);
         }
 
-        return new ShareSession(share, token[1..], page);
+        return new ShareSession(share, shortId, page);
     }
 
     private async Task<JsonElement> ListSharePageAsync(ShareSession session, string? directory, int page, CancellationToken token)
     {
-        (string Key, string Value)[] location = directory is null
-            ? [("root", "1"), ("shorturl", session.ShortId), ("web", "5")]
-            : [("dir", directory), ("uk", session.Page.Owner), ("shareid", session.Page.ShareId), ("web", "1"),
-                ("order", "other"), ("desc", "1"), ("showempty", "0"), ("clienttype", "0")];
+        (string Key, string Value)[] location = (directory, session.ShortId) switch
+        {
+            (null, { } shortId) => [("root", "1"), ("shorturl", shortId), ("web", "5")],
+            (null, null) => [("root", "1"), ("dir", "/"), ("uk", session.Page.Owner), ("shareid", session.Page.ShareId), ("web", "1"),
+                ("order", "other"), ("desc", "1"), ("showempty", "0"), ("clienttype", "0")],
+            ({ } path, _) => [("dir", path), ("uk", session.Page.Owner), ("shareid", session.Page.ShareId), ("web", "1"),
+                ("order", "other"), ("desc", "1"), ("showempty", "0"), ("clienttype", "0")],
+        };
         Uri url = ShareUrl("list", [("bdstoken", session.Page.SessionToken), ("app_id", BaiduTransport.PanAppId), ("channel", "chunlei"),
             ("page", BaiduTransport.Format(page)), ("num", "100"), .. location]);
         JsonElement listing = await _transport.JsonAsync(HttpMethod.Get, url, "shared file listing", true, token,
@@ -263,23 +280,47 @@ public sealed partial class NetdiskClient
             throw new ArgumentException("Provide a Baidu Netdisk share URL or copied share text.");
 
         string token = link.Groups["id"].Success ? link.Groups["id"].Value : "1" + link.Groups["short"].Value;
-        string code = link.Groups["pwd"].Value;
-        if (code.Length == 0)
-        {
-            Match embedded = Regex.Match(input, @"(?:\bpwd=|提取码\s*[：:]\s*|\bcode\s*:\s*)(?<code>[A-Za-z0-9]{4})(?![A-Za-z0-9])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
-            code = embedded.Groups["code"].Value;
-        }
-
-        return (token, code.Length == 0 ? null : code);
+        return (token, link.Groups["pwd"].Success ? link.Groups["pwd"].Value : ReadShareCode(input));
     }
 
-    private async Task<SharePageState> ReadSharePageAsync(Uri share, Uri referer, CancellationToken token)
+    private static string? ReadShareCode(string input)
+    {
+        Match embedded = Regex.Match(input, @"(?:\bpwd=|提取码\s*[：:]\s*|\bcode\s*:\s*)(?<code>[A-Za-z0-9]{4})(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
+        return embedded.Success ? embedded.Groups["code"].Value : null;
+    }
+
+    private static LegacyShare? ParseLegacyShare(string input)
+    {
+        Match match = Regex.Match(input, @"(?<![\w.-])(?:https?://)?pan\.baidu\.com/share/link\?(?<query>[^\s，,<>""'#]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
+        if (!match.Success)
+            return null;
+
+        string id = Parameter("shareid");
+        string owner = Parameter("uk");
+        return new LegacyShare(id, owner);
+
+        string Parameter(string key)
+        {
+            string[] values = match.Groups["query"].Value.Split('&')
+                .Where(part => part.StartsWith(key + "=", StringComparison.OrdinalIgnoreCase))
+                .Select(part => part[(key.Length + 1)..]).ToArray();
+            if (values is not [string value] || value.Length is < 1 or > 20
+                || !value.All(char.IsAsciiDigit) || !ulong.TryParse(value, out ulong number) || number == 0)
+                throw new ArgumentException("A numeric share link requires one positive shareid and uk.");
+            return value;
+        }
+    }
+
+    private async Task<SharePageState> ReadSharePageAsync(Uri share, Uri referer, CancellationToken token, LegacyShare? legacy)
     {
         using HttpResponseMessage response = await _transport.SendAsync(HttpMethod.Get, share, true, token,
             configure: request => request.Headers.Referrer = referer);
         if (!response.IsSuccessStatusCode)
             throw new BaiduApiException("share page", 0, response.StatusCode);
+        if (response.RequestMessage?.RequestUri is { Host: not ("pan.baidu.com" or "yun.baidu.com") })
+            throw new InvalidDataException("Baidu redirected the share page to an unexpected host.");
 
         string html = await response.Content.ReadAsStringAsync(token);
         if (html.Contains("platform-non-found", StringComparison.Ordinal) || html.Contains("error-404", StringComparison.Ordinal))
@@ -288,6 +329,10 @@ public sealed partial class NetdiskClient
         string owner = ReadPageNumber(html, "share_uk");
         string shareId = ReadPageNumber(html, "shareid");
         string session = PanValue("bdstoken", html);
+        if (owner.Length == 0)
+            owner = legacy?.Owner ?? "";
+        if (shareId.Length == 0)
+            shareId = legacy?.Id ?? "";
         if (owner.Length == 0 || shareId.Length == 0 || session.Length == 0)
             throw new InvalidDataException("The Baidu share page did not return session data. Check the share and account cookies.");
 
@@ -307,5 +352,6 @@ public sealed partial class NetdiskClient
     }
 
     private sealed record SharePageState(string Owner, string ShareId, string SessionToken);
-    private sealed record ShareSession(Uri Link, string ShortId, SharePageState Page);
+    private sealed record LegacyShare(string Id, string Owner);
+    private sealed record ShareSession(Uri Link, string? ShortId, SharePageState Page);
 }

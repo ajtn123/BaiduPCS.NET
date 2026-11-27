@@ -8,6 +8,7 @@ public sealed record UploadOptions
     public int Parallel { get; init; } = 4;
     public int Retries { get; init; } = 3;
     public bool SkipRapidCheck { get; init; }
+    public bool RemoveSource { get; init; }
 }
 
 public enum UploadResult { Uploaded, RapidUpload, Skipped }

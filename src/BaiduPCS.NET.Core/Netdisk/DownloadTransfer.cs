@@ -197,15 +197,21 @@ public sealed partial class NetdiskClient
         int rangeCount = checked((int)((entry.Size - 1) / rangeSize + 1));
         var identity = new DownloadIdentity(1, _account.Id, entry.Id, entry.Path, entry.Size, entry.Modified, entry.Md5, rangeSize);
         var completed = new bool[rangeCount];
-        if (file is not null && file.Length == entry.Size && await ReadCheckpointAsync<DownloadCheckpoint>(statePath!, token) is { } previous
-            && previous.Identity == identity && previous.Completed is { Length: var savedCount } && savedCount == rangeCount)
+        if (file is not null && file.Length <= entry.Size && await ReadCheckpointAsync<DownloadCheckpoint>(statePath!, token) is { } previous
+            && previous.Identity == identity && previous.Completed is { Length: var savedCount } && savedCount == rangeCount
+            && Array.FindLastIndex(previous.Completed, value => value) < (file.Length == entry.Size ? rangeCount : file.Length / rangeSize))
             completed = previous.Completed;
 
         if (file is not null)
         {
             if (!completed.Any(value => value))
+            {
                 File.Delete(statePath!);
-            file.SetLength(entry.Size);
+                if (!options.Preallocate)
+                    file.SetLength(0);
+            }
+            if (options.Preallocate)
+                file.SetLength(entry.Size);
         }
 
         long transferred = 0;
@@ -218,7 +224,11 @@ public sealed partial class NetdiskClient
             progress?.Invoke(new DownloadProgress(transferred, entry.Size, null) { Resumed = true });
 
         using var stateLock = new SemaphoreSlim(1);
-        var parallel = new ParallelOptions { MaxDegreeOfParallelism = options.Parallel, CancellationToken = token };
+        var parallel = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = file is null || options.Preallocate ? options.Parallel : 1,
+            CancellationToken = token,
+        };
         await Parallel.ForEachAsync(Enumerable.Range(0, rangeCount).Where(index => !completed[index]), parallel, async (index, innerToken) =>
         {
             long start = index * rangeSize;

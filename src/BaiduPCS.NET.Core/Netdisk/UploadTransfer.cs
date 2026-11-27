@@ -26,6 +26,8 @@ public sealed partial class NetdiskClient
             throw new ArgumentException("Upload requires a positive worker count and nonnegative retries.");
 
         source = Path.GetFullPath(source);
+        if (options.RemoveSource)
+            RejectLink(source);
         await using var file = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, FileOptions.Asynchronous);
         long length = file.Length;
         if (length == 0 || length > MaximumUploadSize)
@@ -35,14 +37,14 @@ public sealed partial class NetdiskClient
         RemoteEntry? existing = await FindAsync(target, cancellationToken);
         if (existing is { IsDirectory: true })
             throw new InvalidOperationException("The upload target is a directory.");
-        if (existing is not null && (options.Conflict == UploadConflict.Skip
-            || options.Conflict == UploadConflict.OverwriteIfSizeDiffers && existing.Size == length))
+        bool skip = existing is not null && (options.Conflict == UploadConflict.Skip
+            || options.Conflict == UploadConflict.OverwriteIfSizeDiffers && existing.Size == length);
+        if (skip && !options.RemoveSource)
             return UploadResult.Skipped;
 
         FileChecksums sums = await FileChecksums.ComputeAsync(file, cancellationToken);
-        if (!options.SkipRapidCheck && existing is not null && string.Equals(existing.Md5, sums.Md5, StringComparison.OrdinalIgnoreCase)
-            && existing.Size == length)
-            return UploadResult.Skipped;
+        if (skip || !options.SkipRapidCheck && MatchesSource(existing))
+            return await FinishAsync(UploadResult.Skipped, existing);
 
         int blockSize = length >= 32 * GiB ? 64 * MiB : length >= 8 * GiB ? 16 * MiB : 4 * MiB;
         string[] blocks = await HashBlocksAsync(file.SafeFileHandle, length, blockSize, cancellationToken);
@@ -69,7 +71,7 @@ public sealed partial class NetdiskClient
                 if (precreate.Number("return_type") == 2)
                 {
                     File.Delete(statePath);
-                    return UploadResult.RapidUpload;
+                    return await FinishAsync(UploadResult.RapidUpload);
                 }
 
                 string uploadId = precreate.Text("uploadid");
@@ -96,14 +98,38 @@ public sealed partial class NetdiskClient
                     ["block_list"] = JsonSerializer.Serialize(blocks),
                     ["target_path"] = RemotePath.Parent(target),
                 }, cancellationToken);
-                File.Delete(statePath);
-                return UploadResult.Uploaded;
             }
             catch (BaiduApiException error) when (attempt == 0 && error.Code is 31061 or 31363)
             {
                 File.Delete(statePath);
                 checkpoint = null;
+                continue;
             }
+
+            File.Delete(statePath);
+            return await FinishAsync(UploadResult.Uploaded);
+        }
+
+        bool MatchesSource(RemoteEntry? entry) => entry is { IsDirectory: false } && entry.Size == length
+            && string.Equals(entry.Md5, sums.Md5, StringComparison.OrdinalIgnoreCase);
+
+        async Task<UploadResult> FinishAsync(UploadResult result, RemoteEntry? remote = null)
+        {
+            if (!options.RemoveSource)
+                return result;
+
+            remote ??= await FindAsync(target, cancellationToken);
+            if (!MatchesSource(remote))
+                throw new InvalidDataException("The remote file could not be verified by size and MD5. The local source was kept.");
+            if (file.Length != length || File.GetLastWriteTimeUtc(source) != modified)
+                throw new IOException("The local source changed during upload.");
+            await file.DisposeAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            RejectLink(source);
+            if (new FileInfo(source) is not { Exists: true } current || current.Length != length || current.LastWriteTimeUtc != modified)
+                throw new IOException("The local source changed during upload.");
+            File.Delete(source);
+            return result;
         }
     }
 

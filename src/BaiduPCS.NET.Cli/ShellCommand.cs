@@ -61,6 +61,13 @@ internal sealed class ShellCommand : ProfileCommand<CommonSettings>
                 continue;
             }
 
+            if (completions.CanonicalName(args[0]) == "upload" && args.Skip(1).Any(arg => arg is "-" or "--stdin"))
+            {
+                Console.Error.WriteLine("Piped uploads must run as a one-shot command outside the BaiduPCS.NET shell.");
+                status = 2;
+                continue;
+            }
+
             if (interactive && CanRecord(args) && (history.Count == 0 || history[^1] != line))
             {
                 history.Add(line);

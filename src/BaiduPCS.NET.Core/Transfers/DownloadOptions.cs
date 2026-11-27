@@ -13,6 +13,7 @@ public sealed record DownloadOptions
     public bool Verify { get; init; }
     public bool PreserveModifiedTime { get; init; }
     public bool Executable { get; init; }
+    public bool Preallocate { get; init; } = true;
 }
 
 public sealed record DownloadProgress(long CompletedBytes, long TotalBytes, int? Range)

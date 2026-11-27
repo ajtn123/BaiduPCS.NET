@@ -83,6 +83,7 @@ public sealed record ClientSettings
     public bool CheckUploadNames { get; init; }
     public string ManualAccountName { get; init; } = "";
     public bool VerifyDownloads { get; init; }
+    public bool SkipRapidCheck { get; init; }
     public UploadConflict UploadConflict { get; init; }
     public string UserAgent { get; init; } = DefaultUserAgent;
     public string PcsUserAgent { get; init; } = "";

@@ -43,6 +43,16 @@ internal static class Program
 
     internal static Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
+        if (args.Length > 2 && args[0] is "upload" or "u")
+        {
+            int stdin = Array.IndexOf(args, "-", 1);
+            if (stdin > 0 && args[stdin - 1] != "--as")
+            {
+                args = [.. args];
+                args[stdin] = "--stdin";
+            }
+        }
+
         var app = new CommandApp();
         var completions = new ShellCompletions();
         app.Configure(config =>

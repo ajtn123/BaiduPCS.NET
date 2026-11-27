@@ -77,6 +77,7 @@ internal sealed partial class SetConfigCommand : ProfileCommand<SetConfigCommand
         "check-upload-names" => settings with { CheckUploadNames = bool.Parse(value) },
         "manual-account-name" => settings with { ManualAccountName = value },
         "verify-downloads" => settings with { VerifyDownloads = bool.Parse(value) },
+        "skip-rapid-check" => settings with { SkipRapidCheck = bool.Parse(value) },
         "upload-conflict" => settings with { UploadConflict = ParseConflict(value) },
         "user-agent" => settings with { UserAgent = value },
         "pcs-user-agent" => settings with { PcsUserAgent = value },

@@ -10,8 +10,9 @@ namespace BaiduPCS.Cli;
 
 internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
 {
-    public sealed class Settings : RemotePaths
+    public sealed class Settings : CommonSettings
     {
+        [CommandArgument(0, "[path]")] public string[] Paths { get; init; } = [];
         [CommandOption("--mode <MODE>")] public DownloadMode Mode { get; init; }
         [CommandOption("--link-index <INDEX>")] public int LinkIndex { get; init; }
         [CommandOption("--test")] public bool Test { get; init; }
@@ -26,10 +27,19 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
         [CommandOption("--verify")] public bool Verify { get; init; }
         [CommandOption("--skip-verification")] public bool SkipVerification { get; init; }
         [CommandOption("--preserve-mtime")] public bool PreserveMtime { get; init; }
+        [CommandOption("--no-preallocate")] public bool NoPreallocate { get; init; }
+        [CommandOption("--stream-discovery")] public bool StreamDiscovery { get; init; }
+        [CommandOption("--resume-all")] public bool ResumeAll { get; init; }
 
         public override ValidationResult Validate() => Parallel is < 1 || FileConcurrency is < 1 || LinkIndex < 0 || Retries < 0
             ? ValidationResult.Error("Concurrency must be positive, and link index and retries cannot be negative.")
-            : Verify && SkipVerification ? ValidationResult.Error("Choose either --verify or --skip-verification.") : ValidationResult.Success();
+            : Verify && SkipVerification ? ValidationResult.Error("Choose either --verify or --skip-verification.")
+            : ResumeAll && (Paths.Length != 0 || Test || StreamDiscovery || OutputDirectory is not null || Mode != DownloadMode.Direct
+                || LinkIndex != 0 || Parallel.HasValue || Retries != 3 || Overwrite || Verify || SkipVerification
+                || FullPath || PreserveMtime || Executable || NoPreallocate)
+                ? ValidationResult.Error("--resume-all uses saved paths, destinations, and transfer options.")
+            : !ResumeAll && Paths.Length == 0 ? ValidationResult.Error("Specify a download path or --resume-all.")
+            : ValidationResult.Success();
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -38,52 +48,83 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
         using (client)
         {
             var account = profile.RequireAccount();
-            string[] sources = await ExpandAsync(client, account, settings.Paths, cancellationToken);
-            string outputRoot = settings.OutputDirectory is { } selected ? Path.GetFullPath(selected)
-                : profile.Settings.DownloadPrefix is { } prefix ? DownloadDestination.ResolvePrefix(profile.Settings.SaveDirectory, prefix)
-                : Path.GetFullPath(Path.Combine(profile.Settings.SaveDirectory, DownloadDestination.SafeName($"{account.Id}_{account.Name}")));
-            IReadOnlyCollection<DownloadItem> items = await PlanDownloadsAsync(client, sources, outputRoot, settings.FullPath, cancellationToken);
-            if (!settings.Test)
-            {
-                foreach (DownloadItem directory in items.Where(item => item.Entry.IsDirectory))
-                    DownloadDestination.CreateSafeDirectory(outputRoot, directory.Target);
-            }
-
-            DownloadItem[] files = items.Where(item => !item.Entry.IsDirectory).OrderBy(item => item.Entry.Size).ToArray();
-            int concurrency = Math.Clamp(settings.FileConcurrency ?? profile.Settings.DownloadConcurrency, 1, Math.Max(1, files.Length));
+            var journal = new DownloadQueue(Store.DirectoryPath, account.Id);
+            var display = new OperationDisplay(settings, "File", settings.WorkerStatus);
+            int concurrency = settings.FileConcurrency ?? profile.Settings.DownloadConcurrency;
             var options = new DownloadOptions
             {
                 Mode = settings.Mode,
                 LinkIndex = settings.LinkIndex,
-                Parallel = Math.Max(1, (settings.Parallel ?? profile.Settings.DownloadParallel) / concurrency),
+                Parallel = settings.Parallel ?? profile.Settings.DownloadParallel,
                 Retries = settings.Retries,
                 TestOnly = settings.Test,
                 Overwrite = settings.Overwrite,
                 Verify = settings.Verify || !settings.SkipVerification && profile.Settings.VerifyDownloads,
                 PreserveModifiedTime = settings.PreserveMtime,
                 Executable = settings.Executable,
+                Preallocate = !settings.NoPreallocate,
             };
+            IAsyncEnumerable<DownloadWork> work;
+            if (settings.ResumeAll)
+            {
+                QueuedDownload[] pending = await journal.ReadAllAsync(cancellationToken).ToArrayAsync(cancellationToken);
+                if (pending.Length == 0)
+                {
+                    Console.WriteLine("No pending downloads for the active account.");
+                    return 0;
+                }
+                concurrency = Math.Min(concurrency, pending.Length);
+                work = pending.OrderBy(item => item.Entry.Size).Select(item => MakeWork(item)).ToArray().ToAsyncEnumerable();
+            }
+            else
+            {
+                string[] sources = await ExpandAsync(client, account, settings.Paths, cancellationToken);
+                string root = settings.OutputDirectory is { } selected ? Path.GetFullPath(selected)
+                    : profile.Settings.DownloadPrefix is { } prefix ? DownloadDestination.ResolvePrefix(profile.Settings.SaveDirectory, prefix)
+                    : Path.GetFullPath(Path.Combine(profile.Settings.SaveDirectory, DownloadDestination.SafeName($"{account.Id}_{account.Name}")));
+                IAsyncEnumerable<DownloadItem> discovered = DiscoverAsync(client, sources, root, settings.FullPath, cancellationToken);
+                if (settings.StreamDiscovery)
+                    work = DiscoverWorkAsync(discovered, root, cancellationToken);
+                else
+                {
+                    DownloadItem[] items = await discovered.ToArrayAsync(cancellationToken);
+                    concurrency = Math.Min(concurrency, Math.Max(1, items.Count(item => !item.Entry.IsDirectory)));
+                    DownloadWork[] queue = await DiscoverWorkAsync(items.OrderBy(item => item.Entry.Size).ToAsyncEnumerable(),
+                        root, cancellationToken).ToArrayAsync(cancellationToken);
+                    work = queue.ToAsyncEnumerable();
+                }
+            }
+
             var failures = new ConcurrentQueue<string>();
             var timer = Stopwatch.StartNew();
-            var display = new OperationDisplay(settings, "File", settings.WorkerStatus);
             var numbers = new DisplayNumbers(settings.RawNumbers);
-            var queue = files.Select(item => (Item: item, Row: display.Enqueue(item.Entry.Path, item.Entry.Size))).ToArray();
             long totalBytes = 0;
-            await display.RunAsync(() => Parallel.ForEachAsync(queue,
+            await display.RunAsync(() => Parallel.ForEachAsync(work,
                 new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = cancellationToken },
-                async (work, token) =>
+                async (planned, token) =>
                 {
-                    DownloadItem item = work.Item;
+                    QueuedDownload item = planned.Download;
                     string path = item.Entry.Path;
-                    OperationDisplay.Item row = display.Begin(work.Row);
+                    OperationDisplay.Item row = display.Begin(planned.Row);
                     try
                     {
-                        if (!settings.Test)
-                            DownloadDestination.CreateSafeDirectory(outputRoot, Path.GetDirectoryName(item.Target)!);
+                        if (!item.Options.TestOnly)
+                            DownloadDestination.CreateSafeDirectory(item.Root, Path.GetDirectoryName(item.Target)!);
+                        RemoteEntry entry = item.Entry;
+                        if (settings.ResumeAll)
+                        {
+                            RemoteEntry? current = await client.FindAsync(path, token);
+                            if (current is null || current.IsDirectory || current.Id != entry.Id
+                                || current.Size != entry.Size || current.Modified != entry.Modified)
+                                throw new InvalidDataException("The queued remote file is missing or has changed. Start a new download for its current contents.");
+                            entry = current;
+                        }
 
-                        bool processed = await client.DownloadAsync(item.Entry, item.Target, options,
+                        bool processed = await client.DownloadAsync(entry, item.Target, item.Options,
                             display.TrackProgress ? progress => display.Report(row, progress.CompletedBytes,
                                 progress.TotalBytes, progress.Range, progress.Resumed) : null, token);
+                        if (!item.Options.TestOnly)
+                            journal.Complete(item);
                         if (processed)
                             Interlocked.Add(ref totalBytes, item.Entry.Size);
 
@@ -104,6 +145,28 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
                 Console.Error.WriteLine($"Failed downloads ({failures.Count}): {string.Join(", ", failures)}");
 
             return failures.IsEmpty ? 0 : 1;
+
+            DownloadWork MakeWork(QueuedDownload download) =>
+                new(download, display.Enqueue(download.Entry.Path, download.Entry.Size));
+
+            async IAsyncEnumerable<DownloadWork> DiscoverWorkAsync(IAsyncEnumerable<DownloadItem> items, string root,
+                [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
+            {
+                DownloadOptions perFile = options with { Parallel = Math.Max(1, options.Parallel / concurrency) };
+                await foreach (DownloadItem item in items.WithCancellation(token))
+                {
+                    if (item.Entry.IsDirectory)
+                    {
+                        if (!perFile.TestOnly)
+                            DownloadDestination.CreateSafeDirectory(root, item.Target);
+                        continue;
+                    }
+                    var download = new QueuedDownload(item.Entry, root, item.Target, perFile);
+                    if (!perFile.TestOnly)
+                        await journal.RecordAsync(download, token);
+                    yield return MakeWork(download);
+                }
+            }
         }
     }
 
@@ -118,8 +181,8 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
         _ => error.GetType().Name,
     };
 
-    private static async Task<IReadOnlyCollection<DownloadItem>> PlanDownloadsAsync(NetdiskClient client, string[] sources,
-        string outputRoot, bool fullPath, CancellationToken token)
+    private static async IAsyncEnumerable<DownloadItem> DiscoverAsync(NetdiskClient client, string[] sources,
+        string outputRoot, bool fullPath, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
     {
         var targets = new Dictionary<string, DownloadItem>(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
             ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
@@ -129,33 +192,35 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
                 ? new(0, 0, "/", "", true, 0, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "", [])
                 : await client.FindAsync(source, token) ?? throw new InvalidOperationException($"No remote file or directory at {source}.");
 
-            var queue = new Queue<RemoteEntry>();
-            queue.Enqueue(entry);
             string relativeRoot = fullPath ? "/" : RemotePath.Parent(entry.Path);
             int prefixLength = relativeRoot == "/" ? 1 : relativeRoot.Length + 1;
-            while (queue.TryDequeue(out RemoteEntry? current))
+            if (AddTarget(entry, prefixLength) is { } root)
+                yield return root;
+            if (entry.IsDirectory)
             {
-                string target = DownloadDestination.Resolve(outputRoot, current.Path[prefixLength..]);
-                if (targets.TryGetValue(target, out DownloadItem? previous) && previous.Entry.Path != current.Path)
-                    throw new ArgumentException("Multiple remote paths map to the same local download destination. Use --full-path or separate output directories.");
-
-                if (!targets.TryAdd(target, new DownloadItem(current, target)))
-                    continue;
-                if (!current.IsDirectory)
-                    continue;
-
-                await foreach (RemoteEntry child in client.ListAsync(current.Path, cancellationToken: token))
+                await foreach (RemoteEntry child in client.ListDescendantsAsync(entry.Path, token))
                 {
-                    if (child.Path == current.Path || RemotePath.Parent(child.Path) != current.Path)
-                        throw new InvalidDataException("Baidu returned a file outside the requested directory.");
-
-                    queue.Enqueue(child);
+                    if (AddTarget(child, prefixLength) is { } item)
+                        yield return item;
                 }
             }
         }
 
-        return targets.Values;
+        DownloadItem? AddTarget(RemoteEntry entry, int prefixLength)
+        {
+            string target = DownloadDestination.Resolve(outputRoot, entry.Path[prefixLength..]);
+            if (targets.TryGetValue(target, out DownloadItem? previous))
+            {
+                if (previous.Entry.Path != entry.Path)
+                    throw new ArgumentException("Multiple remote paths map to the same local download destination. Use --full-path or separate output directories.");
+                return null;
+            }
+            var item = new DownloadItem(entry, target);
+            targets.Add(target, item);
+            return item;
+        }
     }
 
     private sealed record DownloadItem(RemoteEntry Entry, string Target);
+    private sealed record DownloadWork(QueuedDownload Download, OperationDisplay.Item Row);
 }

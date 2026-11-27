@@ -47,6 +47,30 @@ public sealed class NetdiskClientTests
         Assert.Equal(42, result.Files[1].Size);
     }
 
+    [Fact]
+    public async Task OpensNumericShareByOwnerAndShareId()
+    {
+        using var handler = new FixtureHandler((request, _) =>
+        {
+            Uri uri = request.RequestUri!;
+            Assert.Contains("shareid=64", uri.Query);
+            Assert.Contains("uk=44", uri.Query);
+            if (uri.AbsolutePath == "/share/link")
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"bdstoken":"fixture-token"}""") };
+            Assert.Equal("/share/list", uri.AbsolutePath);
+            Assert.Contains("root=1", uri.Query);
+            Assert.DoesNotContain("shorturl=", uri.Query);
+            return Json(new { list = new[] { new { path = "/file", fs_id = 7, isdir = 0, size = 42 } } });
+        });
+        using var client = Client(handler);
+
+        ShareInventory result = await client.InspectShareAsync("https://pan.baidu.com/share/link?uk=44&shareid=64", null,
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.Complete);
+        Assert.Equal(42, Assert.Single(result.Files).Size);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -81,13 +105,15 @@ public sealed class NetdiskClientTests
         }
     }
 
-    [Fact]
-    public async Task ImportsASelectedShareFileIntoTheRequestedDirectory()
+    [Theory]
+    [InlineData("https://pan.baidu.com/s/1fixture", "/s/1fixture")]
+    [InlineData("https://pan.baidu.com/share/link?shareid=64&uk=44", "/share/link")]
+    public async Task ImportsASelectedShareFileIntoTheRequestedDirectory(string link, string sharePage)
     {
         using var handler = new FixtureHandler(async (request, _, token) =>
         {
             Uri uri = request.RequestUri!;
-            if (uri.AbsolutePath == "/s/1fixture")
+            if (uri.AbsolutePath == sharePage)
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent("{\"bdstoken\":\"fixture-token\",\"share_uk\":44,\"shareid\":64}"),
@@ -107,7 +133,7 @@ public sealed class NetdiskClientTests
         });
         using var client = Client(handler);
 
-        IReadOnlyList<string> saved = await client.ImportShareAsync("https://pan.baidu.com/s/1fixture", null,
+        IReadOnlyList<string> saved = await client.ImportShareAsync(link, null,
             "/shared files", [9], collect: false, TestContext.Current.CancellationToken);
 
         Assert.Equal("/shared files/report file.txt", Assert.Single(saved));
@@ -338,8 +364,10 @@ public sealed class NetdiskClientTests
         }
     }
 
-    [Fact]
-    public async Task ResumesCompletedRangesAfterARequestFails()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ResumesCompletedRangesAfterARequestFails(bool preallocate)
     {
         const int firstRange = 256 * 1024;
         const int length = firstRange + 3;
@@ -367,11 +395,13 @@ public sealed class NetdiskClientTests
             string destination = Path.Combine(directory, "result");
             var entry = new RemoteEntry(2, 1, "/result", "result", false, length, DateTimeOffset.UnixEpoch,
                 DateTimeOffset.UnixEpoch, "", []);
-            var options = new DownloadOptions { Mode = DownloadMode.Pcs, Retries = 0 };
+            var options = new DownloadOptions { Mode = DownloadMode.Pcs, Retries = 0, Preallocate = preallocate };
 
             await Assert.ThrowsAsync<HttpRequestException>(() => client.DownloadAsync(entry, destination, options,
                 cancellationToken: TestContext.Current.CancellationToken));
             Assert.False(File.Exists(destination));
+            string staged = Assert.Single(Directory.EnumerateFiles(Path.Combine(directory, ".baidupcs-partial"), "*.part"));
+            Assert.Equal(preallocate ? length : firstRange, new FileInfo(staged).Length);
             interrupted = false;
             ranges.Clear();
             Assert.True(await client.DownloadAsync(entry, destination, options, cancellationToken: TestContext.Current.CancellationToken));
@@ -540,6 +570,76 @@ public sealed class NetdiskClientTests
         IReadOnlyList<string> matches = await client.MatchAsync("/work", "../docs/[a]?.txt", TestContext.Current.CancellationToken);
 
         Assert.Equal(["/docs/[a]😀.txt"], matches);
+    }
+
+    [Fact]
+    public async Task ExcludesAlternativesWithinOneGlobSegment()
+    {
+        using var handler = new FixtureHandler((_, _) => Json(new
+        {
+            list = new[] { Entry(1, "/docs/draft.txt"), Entry(2, "/docs/test.tmp"), Entry(3, "/docs/report.txt") },
+        }));
+        using var client = Client(handler);
+
+        IReadOnlyList<string> matches = await client.MatchAsync("/docs", "!(draft*|*.tmp)", TestContext.Current.CancellationToken);
+
+        Assert.Equal(["/docs/report.txt"], matches);
+    }
+
+    [Fact]
+    public async Task RanksSubdirectoriesByRecursiveSizeWithoutCountingTopLevelFiles()
+    {
+        using var handler = new FixtureHandler((request, _) =>
+        {
+            (long Id, string Path, int IsDirectory, long Size)[] entries = Uri.UnescapeDataString(request.RequestUri!.Query) switch
+            {
+                var query when query.Contains("dir=/docs/a/deep&", StringComparison.Ordinal) =>
+                    [(6, "/docs/a/deep/file", 0, 9)],
+                var query when query.Contains("dir=/docs/a&", StringComparison.Ordinal) =>
+                    [(4, "/docs/a/deep", 1, 0), (5, "/docs/a/file", 0, 8)],
+                var query when query.Contains("dir=/docs/b&", StringComparison.Ordinal) =>
+                    [(7, "/docs/b/file", 0, 10)],
+                _ => [(1, "/docs/a", 1, 0), (2, "/docs/b", 1, 0), (3, "/docs/top", 0, 100)],
+            };
+            return Json(new { list = entries.Select(item => new { fs_id = item.Id, path = item.Path, isdir = item.IsDirectory, size = item.Size }) });
+        });
+        using var client = Client(handler);
+
+        var sizes = await client.GetSubdirectorySizesAsync("/docs", TestContext.Current.CancellationToken);
+
+        Assert.Equal(new[] { ("/docs/a", 17L), ("/docs/b", 10L) }, sizes.Select(item => (item.Path, item.Size)));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RemovesAnAlreadyUploadedSourceOnlyWhenItsChecksumMatches(bool matches)
+    {
+        using var handler = new FixtureHandler((request, _) =>
+        {
+            Assert.Contains("method=meta", request.RequestUri!.Query);
+            return Json(new
+            {
+                list = new[] { new { fs_id = 2, path = "/target", size = 3, md5 = matches ? "900150983cd24fb0d6963f7d28e17f72" : new string('0', 32) } },
+            });
+        });
+        using var client = Client(handler);
+        string file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(file, "abc"u8.ToArray(), TestContext.Current.CancellationToken);
+            Task<UploadResult> upload = client.UploadAsync(file, "/target", Path.GetTempPath(), new UploadOptions { RemoveSource = true },
+                cancellationToken: TestContext.Current.CancellationToken);
+            if (matches)
+                Assert.Equal(UploadResult.Skipped, await upload);
+            else
+                await Assert.ThrowsAsync<InvalidDataException>(() => upload);
+            Assert.Equal(!matches, File.Exists(file));
+        }
+        finally
+        {
+            File.Delete(file);
+        }
     }
 
     [Fact]

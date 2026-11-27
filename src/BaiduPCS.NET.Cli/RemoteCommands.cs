@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BaiduPCS.Configuration;
 using BaiduPCS.Netdisk;
 using Spectre.Console;
@@ -116,6 +117,10 @@ internal sealed class ListFilesCommand : RemoteCommand<ListFilesCommand.Settings
 
         [CommandOption("--json")]
         public bool Json { get; init; }
+
+        [CommandOption("--folder-sizes")]
+        [Description("Rank immediate subdirectories by their recursive size.")]
+        public bool FolderSizes { get; init; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -124,8 +129,10 @@ internal sealed class ListFilesCommand : RemoteCommand<ListFilesCommand.Settings
         using (client)
         {
             string path = await client.MatchOneAsync(account.WorkingDirectory, settings.Path, cancellationToken);
-            FileOutput.Write(await client.ListAsync(path, settings.Sort, settings.Descending, cancellationToken)
-                .ToArrayAsync(cancellationToken), settings.Totals, json: settings.Json, raw: settings.RawNumbers);
+            IReadOnlyCollection<RemoteEntry> entries = settings.FolderSizes
+                ? await client.GetSubdirectorySizesAsync(path, cancellationToken)
+                : await client.ListAsync(path, settings.Sort, settings.Descending, cancellationToken).ToArrayAsync(cancellationToken);
+            FileOutput.Write(entries, settings.Totals, json: settings.Json, raw: settings.RawNumbers, folderSizes: settings.FolderSizes);
         }
 
         return 0;
@@ -330,12 +337,12 @@ internal sealed class RemoveFilesCommand : RemoteCommand<RemotePaths>
     }
 }
 
-internal abstract class RelocateFilesCommand(bool copy, bool rename = false) : RemoteCommand<RemotePaths>
+internal abstract class RelocateFilesCommand(bool copy) : RemoteCommand<RemotePaths>
 {
     public override async Task<int> ExecuteAsync(CommandContext context, RemotePaths settings, CancellationToken cancellationToken)
     {
-        if (settings.Paths.Length < 2 || rename && settings.Paths.Length != 2)
-            throw new ArgumentException(rename ? "Specify a source and new name." : "Specify at least one source and a destination.");
+        if (settings.Paths.Length < 2)
+            throw new ArgumentException("Specify at least one source and a destination.");
 
         var (account, client) = await OpenAsync(settings, cancellationToken);
         using (client)
@@ -345,15 +352,6 @@ internal abstract class RelocateFilesCommand(bool copy, bool rename = false) : R
                 throw new ArgumentException("The remote root cannot be moved or copied.");
 
             string destination = settings.Paths[^1];
-            if (rename)
-            {
-                if (sources.Length != 1 || destination.Contains('/') || destination is "" or "." or "..")
-                    throw new ArgumentException("Rename requires one source and a new name within the same directory.");
-
-                return await ExecuteEachAsync(settings, sources, _ => $"{sources[0]} -> {destination}",
-                    path => client.MoveAsync(path, RemotePath.Resolve(RemotePath.Parent(path), destination), cancellationToken), cancellationToken);
-            }
-
             IReadOnlyList<string> matches = await client.MatchAsync(account.WorkingDirectory, destination, cancellationToken);
             if (matches.Count > 1)
                 throw new ArgumentException("The destination pattern matches more than one path.");
@@ -379,14 +377,90 @@ internal abstract class RelocateFilesCommand(bool copy, bool rename = false) : R
 
 internal sealed class CopyFilesCommand() : RelocateFilesCommand(copy: true);
 internal sealed class MoveFilesCommand() : RelocateFilesCommand(copy: false);
-internal sealed class RenameFileCommand() : RelocateFilesCommand(copy: false, rename: true);
+internal sealed class RenameFileCommand : RemoteCommand<RenameFileCommand.Settings>
+{
+    public sealed class Settings : RemotePaths
+    {
+        [CommandOption("--pattern <REGEX>")] public string? Pattern { get; init; }
+        [CommandOption("--replacement <TEXT>")] public string? Replacement { get; init; }
+        [CommandOption("--dry-run")] public bool DryRun { get; init; }
+
+        public override ValidationResult Validate() => (Pattern, Replacement, Paths.Length) switch
+        {
+            (null, null, 2) => ValidationResult.Success(),
+            (not null, not null, > 0) => ValidationResult.Success(),
+            _ => ValidationResult.Error("Supply a source and a new name, or --pattern and --replacement with one or more source paths."),
+        };
+    }
+
+    public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
+    {
+        var (account, client) = await OpenAsync(settings, cancellationToken);
+        using (client)
+        {
+            Regex? expression = settings.Pattern is { } pattern
+                ? new Regex(pattern, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)) : null;
+            string[] sources = await ExpandAsync(client, account, expression is null ? settings.Paths[..1] : settings.Paths, cancellationToken);
+            if (expression is null && sources.Length != 1 || sources.Contains("/", StringComparer.Ordinal))
+                throw new ArgumentException("Rename requires explicit files or directories below the remote root.");
+
+            var selected = sources.ToHashSet(StringComparer.Ordinal);
+            var operations = new List<(string Source, string Target)>();
+            var targets = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string source in sources)
+            {
+                string name = expression is null ? settings.Paths[^1] : expression.Replace(RemotePath.Name(source), settings.Replacement!);
+                if (name is "" or "." or ".." || name.Contains('/') || name.Contains('\0'))
+                    throw new ArgumentException("Every replacement must be a name within the same directory.");
+
+                string target = RemotePath.Resolve(RemotePath.Parent(source), name);
+                if (target == source)
+                {
+                    if (expression is null)
+                        throw new ArgumentException("The new name must differ from the source name.");
+                    continue;
+                }
+                if (!targets.Add(target) || selected.Contains(target))
+                    throw new ArgumentException("The rename targets overlap. Use separate invocations for swaps or chains.");
+                operations.Add((source, target));
+            }
+
+            var moving = operations.Select(item => item.Source).ToHashSet(StringComparer.Ordinal);
+            foreach (var (source, target) in operations)
+            {
+                for (string parent = RemotePath.Parent(source); parent != "/"; parent = RemotePath.Parent(parent))
+                {
+                    if (moving.Contains(parent))
+                        throw new ArgumentException("Rename parent directories and their children separately.");
+                }
+                if (settings.DryRun || expression is not null)
+                {
+                    if (await client.FindAsync(source, cancellationToken) is null)
+                        throw new ArgumentException($"The rename source does not exist: {source}.");
+                    if (await client.FindAsync(target, cancellationToken) is not null)
+                        throw new ArgumentException($"The rename target already exists: {target}.");
+                }
+            }
+
+            if (settings.DryRun)
+            {
+                foreach (var (source, target) in operations)
+                    Console.WriteLine($"{source} -> {target}");
+                return 0;
+            }
+
+            return await ExecuteEachAsync(settings, operations, item => $"{item.Source} -> {item.Target}",
+                item => client.MoveAsync(item.Source, item.Target, cancellationToken), cancellationToken);
+        }
+    }
+}
 
 internal static class FileOutput
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     internal static void Write(IReadOnlyCollection<RemoteEntry> entries, bool details = false, bool fullPaths = false,
-        bool json = false, bool raw = false)
+        bool json = false, bool raw = false, bool folderSizes = false)
     {
         if (json)
         {
@@ -402,7 +476,7 @@ internal static class FileOutput
         foreach (RemoteEntry entry in entries)
         {
             string name = (fullPaths ? entry.Path : entry.Name) + (entry.IsDirectory && entry.Path != "/" ? "/" : "");
-            string[] row = [Markup.Escape(name), entry.IsDirectory ? "-" : numbers.Bytes(entry.Size, unit: false),
+            string[] row = [Markup.Escape(name), entry.IsDirectory && !folderSizes ? "-" : numbers.Bytes(entry.Size, unit: false),
                 entry.Modified.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)];
             if (details)
                 row = [.. row, entry.Id.ToString(CultureInfo.InvariantCulture), entry.AppId.ToString(CultureInfo.InvariantCulture),
@@ -414,6 +488,6 @@ internal static class FileOutput
 
         AnsiConsole.Write(table);
         Console.WriteLine($"Files: {entries.Count(entry => !entry.IsDirectory)}, directories: {entries.Count(entry => entry.IsDirectory)}, "
-            + numbers.Bytes(entries.Where(entry => !entry.IsDirectory).Sum(entry => entry.Size)));
+            + numbers.Bytes(entries.Where(entry => folderSizes || !entry.IsDirectory).Sum(entry => entry.Size)));
     }
 }

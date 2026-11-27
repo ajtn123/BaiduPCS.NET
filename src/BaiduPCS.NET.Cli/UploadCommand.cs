@@ -11,18 +11,24 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
 {
     public sealed class Settings : CommonSettings
     {
-        [CommandArgument(0, "<source-and-remote-directory>")] public string[] Paths { get; init; } = [];
+        [CommandArgument(0, "<path>")] public string[] Paths { get; init; } = [];
         [CommandOption("--parallel <WORKERS>")] public int? Parallel { get; init; }
         [CommandOption("--file-concurrency <FILES>")] public int? FileConcurrency { get; init; }
         [CommandOption("--retries <COUNT>")] public int Retries { get; init; } = 3;
         [CommandOption("--skip-rapid-check")] public bool SkipRapidCheck { get; init; }
+        [CommandOption("--rapid-check")] public bool RapidCheck { get; init; }
+        [CommandOption("--remove-source")] public bool RemoveSource { get; init; }
+        [CommandOption("--stdin")] public bool StandardInput { get; init; }
         [CommandOption("--conflict <POLICY>")] public string? Conflict { get; init; }
         [CommandOption("--as <NAME>")] public string? RemoteName { get; init; }
 
-        public override ValidationResult Validate() => Paths.Length < 2
+        public override ValidationResult Validate() => StandardInput && (Paths.Length != 1 || RemoveSource || RemoteName is not null)
+            ? ValidationResult.Error("Use upload - with one remote file path and without --as or --remove-source.")
+            : !StandardInput && Paths.Length < 2
             ? ValidationResult.Error("Specify at least one local source, followed by the remote directory.")
             : RemoteName is not null && (Paths.Length != 2 || RemoteName is "" or "." or ".." || RemoteName.Contains('/'))
                 ? ValidationResult.Error("--as requires one local file and a name within the remote directory.")
+            : SkipRapidCheck && RapidCheck ? ValidationResult.Error("Choose either --rapid-check or --skip-rapid-check.")
             : Parallel is < 1 || FileConcurrency is < 1 || Retries < 0
                 ? ValidationResult.Error("Concurrency must be positive and retries cannot be negative.") : ValidationResult.Success();
     }
@@ -32,18 +38,25 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
         var (profile, client) = await OpenProfileAsync(settings, cancellationToken);
         using (client)
         {
-            string remote = await client.MatchOneAsync(profile.RequireAccount().WorkingDirectory, settings.Paths[^1], cancellationToken);
+            string workingDirectory = profile.RequireAccount().WorkingDirectory;
             var options = new UploadOptions
             {
                 Parallel = settings.Parallel ?? profile.Settings.UploadParallel,
                 Retries = settings.Retries,
-                SkipRapidCheck = settings.SkipRapidCheck,
+                SkipRapidCheck = settings.SkipRapidCheck || !settings.RapidCheck && profile.Settings.SkipRapidCheck,
+                RemoveSource = settings.RemoveSource,
                 Conflict = settings.Conflict is null ? profile.Settings.UploadConflict : SetConfigCommand.ParseConflict(settings.Conflict),
             };
+            if (settings.StandardInput)
+                return await UploadInputAsync(client, workingDirectory, settings.Paths[^1], options, cancellationToken);
+
+            string remote = await client.MatchOneAsync(workingDirectory, settings.Paths[^1], cancellationToken);
             string checkpoints = Path.Combine(Store.DirectoryPath, "uploads");
             var failures = new ConcurrentQueue<string>();
             UploadItem[] files = EnumerateFiles(settings.Paths[..^1], remote, settings.RemoteName,
-                profile.Settings.CheckUploadNames, failures, cancellationToken);
+                profile.Settings.CheckUploadNames, settings.RemoveSource, failures, cancellationToken);
+            if (settings.RemoveSource && files.Select(item => item.File.FullName).Distinct(LocalPathComparer).Count() != files.Length)
+                throw new ArgumentException("--remove-source requires each local file to have just one remote target.");
             if (files.Length == 0)
             {
                 foreach (string failure in failures)
@@ -54,7 +67,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
             var timer = Stopwatch.StartNew();
             var display = new OperationDisplay(settings, "File", settings.Verbose);
             var numbers = new DisplayNumbers(settings.RawNumbers);
-            var queue = files.Select(item => (Item: item, Row: display.Enqueue(item.Target, item.File.Length))).ToArray();
+            var queue = files.Select(item => (Item: item, Row: display.Enqueue(item.Target, item.Length))).ToArray();
             long totalBytes = 0;
             int failed = 0;
             var parallel = new ParallelOptions
@@ -72,7 +85,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                         display.TrackProgress ? progress => display.Report(row, progress.CompletedBytes,
                             progress.TotalBytes, progress.Part, resumed: progress.Part < 0) : null, token);
                     if (result != UploadResult.Skipped)
-                        Interlocked.Add(ref totalBytes, item.File.Length);
+                        Interlocked.Add(ref totalBytes, item.Length);
 
                     string label = result switch
                     {
@@ -80,7 +93,13 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                         UploadResult.Skipped => "Skipped",
                         _ => "Uploaded",
                     };
-                    display.End(row, label, plain: $"{label} {item.Target}");
+                    string plain = $"{label} {item.Target}";
+                    if (settings.RemoveSource)
+                    {
+                        label += ", removed local source";
+                        plain += $" (removed {item.File.FullName})";
+                    }
+                    display.End(row, label, plain: plain);
                 }
                 catch (Exception error) when (error is IOException or InvalidDataException or HttpRequestException or BaiduApiException
                     or UnauthorizedAccessException or ArgumentException or InvalidOperationException
@@ -101,13 +120,53 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
         }
     }
 
-    private static UploadItem[] EnumerateFiles(string[] paths, string destination, string? remoteName, bool checkNames,
+    private static async Task<int> UploadInputAsync(NetdiskClient client, string workingDirectory, string target, UploadOptions options,
+        CancellationToken token)
+    {
+        if (!Console.IsInputRedirected)
+            throw new ArgumentException("Pipe binary data to upload - and supply the full remote file path.");
+        if (target.EndsWith('/') || RemotePath.Name(target) is "" or "." or "..")
+            throw new ArgumentException("A piped upload requires a remote file name.");
+        string remote = RemotePath.Resolve(workingDirectory, target);
+        DirectoryInfo temporary = Directory.CreateTempSubdirectory("baidupcs-upload-stdin-");
+        string source = Path.Combine(temporary.FullName, "input");
+        try
+        {
+            await using (Stream input = Console.OpenStandardInput())
+            await using (var output = new FileStream(source, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, true))
+            {
+                var buffer = new byte[128 * 1024];
+                int read;
+                while ((read = await input.ReadAsync(buffer, token)) != 0)
+                {
+                    if (output.Length > NetdiskClient.MaximumUploadSize - read)
+                        throw new ArgumentException("Piped input exceeds the 128 GiB upload limit.");
+                    await output.WriteAsync(buffer.AsMemory(0, read), token);
+                }
+            }
+
+            UploadResult result = await client.UploadAsync(source, remote, temporary.FullName, options, cancellationToken: token);
+            string status = result switch
+            {
+                UploadResult.RapidUpload => "Rapid upload",
+                UploadResult.Skipped => "Skipped",
+                _ => "Uploaded",
+            };
+            Console.WriteLine($"{status} {remote}");
+            return 0;
+        }
+        finally
+        {
+            temporary.Delete(recursive: true);
+        }
+    }
+
+    private static UploadItem[] EnumerateFiles(string[] paths, string destination, string? remoteName, bool checkNames, bool removeSource,
         ConcurrentQueue<string> failures,
         CancellationToken token)
     {
         var items = new Dictionary<string, UploadItem>(StringComparer.Ordinal);
-        var ancestors = new HashSet<string>(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
-            ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var ancestors = new HashSet<string>(LocalPathComparer);
         foreach (string path in paths)
         {
             string fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
@@ -131,6 +190,11 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
             try
             {
                 FileSystemInfo? linked = entry.ResolveLinkTarget(returnFinalTarget: true);
+                if (linked is not null && removeSource)
+                {
+                    failures.Enqueue($"Cannot remove a source reached through a symbolic link: {entry.FullName}");
+                    return;
+                }
                 if (linked is not null && !linked.Exists)
                     return;
 
@@ -157,7 +221,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                     if (items.TryGetValue(target, out UploadItem? existing) && existing.File.FullName != file.FullName)
                         throw new ArgumentException($"Multiple local files map to remote path {target}.");
 
-                    items.TryAdd(target, new UploadItem(file, target));
+                    items.TryAdd(target, new UploadItem(file, target, file.Length));
                 }
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -167,5 +231,8 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
         }
     }
 
-    private sealed record UploadItem(FileInfo File, string Target);
+    private static StringComparer LocalPathComparer => OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+        ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    private sealed record UploadItem(FileInfo File, string Target, long Length);
 }

@@ -97,6 +97,52 @@ public sealed partial class NetdiskClient : IDisposable
         return result;
     }
 
+    public async IAsyncEnumerable<RemoteEntry> ListDescendantsAsync(string path,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (!RemotePath.IsAbsolute(path) || RemotePath.Resolve("/", path) != path)
+            throw new ArgumentException("A normalized absolute directory path is required.", nameof(path));
+
+        var directories = new Queue<string>();
+        directories.Enqueue(path);
+        while (directories.TryDequeue(out string? parent))
+        {
+            await foreach (RemoteEntry entry in ListAsync(parent, cancellationToken: cancellationToken))
+            {
+                if (entry.Path == parent || RemotePath.Parent(entry.Path) != parent || RemotePath.Resolve("/", entry.Path) != entry.Path
+                    || !entry.Name.Equals(RemotePath.Name(entry.Path), StringComparison.Ordinal))
+                    throw new InvalidDataException("Baidu returned a file outside the requested directory.");
+
+                yield return entry;
+                if (entry.IsDirectory)
+                    directories.Enqueue(entry.Path);
+            }
+        }
+    }
+
+    public async Task<IReadOnlyList<RemoteEntry>> GetSubdirectorySizesAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var sizes = new Dictionary<string, RemoteEntry>(StringComparer.Ordinal);
+        await foreach (RemoteEntry entry in ListDescendantsAsync(path, cancellationToken))
+        {
+            string relative = entry.Path[(path == "/" ? 1 : path.Length + 1)..];
+            int separator = relative.IndexOf('/');
+            if (separator < 0 && entry.IsDirectory)
+                sizes.TryAdd(entry.Path, entry with { Size = 0 });
+            else if (separator >= 0 && !entry.IsDirectory)
+            {
+                if (entry.Size < 0)
+                    throw new InvalidDataException("Baidu returned a negative file size.");
+                string root = RemotePath.Resolve(path, relative[..separator]);
+                RemoteEntry directory = sizes[root];
+                sizes[root] = directory with { Size = checked(directory.Size + entry.Size) };
+            }
+        }
+
+        return sizes.Values.OrderByDescending(entry => entry.Size)
+            .ThenBy(entry => entry.Name, StringComparer.Ordinal).ToArray();
+    }
+
     public async Task<RemoteEntry?> FindAsync(string path, CancellationToken cancellationToken = default)
     {
         try
