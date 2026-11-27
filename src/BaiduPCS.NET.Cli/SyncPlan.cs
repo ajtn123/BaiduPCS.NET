@@ -29,6 +29,7 @@ internal sealed record SyncPlan(string LocalRoot, string RemoteRoot, IReadOnlyLi
         var changes = new List<SyncChange>();
         var directories = new Dictionary<(SyncAction, string), SyncChange>();
 
+        localRoot = ResolveLocalRoot(new DirectoryInfo(localRoot), 32);
         RequireSafeParents(localRoot);
         if (ReadLocal(localRoot) is not { IsDirectory: true })
             throw new ArgumentException("The local sync root must be an existing directory.");
@@ -184,6 +185,22 @@ internal sealed record SyncPlan(string LocalRoot, string RemoteRoot, IReadOnlyLi
             return new(path, true, 0, default);
         var info = new FileInfo(path);
         return new(path, false, info.Length, info.LastWriteTimeUtc);
+    }
+
+    private static string ResolveLocalRoot(DirectoryInfo directory, int linkBudget)
+    {
+        if (directory.Parent is not { } parent)
+            return directory.FullName;
+
+        string path = Path.Combine(ResolveLocalRoot(parent, linkBudget), directory.Name);
+        var resolved = new DirectoryInfo(path);
+        if (!resolved.Exists)
+            throw new ArgumentException("The local sync root must be an existing directory.");
+        if (!resolved.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            return path;
+        if (linkBudget == 0 || resolved.ResolveLinkTarget(returnFinalTarget: true) is not DirectoryInfo target)
+            throw new IOException($"The selected sync root has an unresolved directory link: {path}");
+        return ResolveLocalRoot(target, linkBudget - 1);
     }
 
     internal static void RequireSafeParents(string path)

@@ -131,6 +131,27 @@ public sealed class SyncTests : IDisposable
         Assert.Equal(["report 1.csv", "report 2.csv"], matches);
     }
 
+    [Fact]
+    public async Task ResolvesLinksAboveTheRootAndRejectsLinksInsideIt()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        string target = Directory.CreateDirectory(Path.Combine(_root.FullName, "target", "folder")).FullName;
+        string alias = Path.Combine(_root.FullName, "alias");
+        Directory.CreateSymbolicLink(alias, Path.GetDirectoryName(target)!);
+        using var client = Client(new Disk([]));
+        SyncOptions options = Options(SyncMode.Upload, SyncDirection.Upload, recursive: true);
+
+        SyncPlan plan = await SyncPlan.CreateAsync(client, Path.Combine(alias, "folder"), "/", options, _token);
+        Assert.EndsWith("/target/folder", plan.LocalRoot, StringComparison.Ordinal);
+        Assert.Empty(plan.Changes);
+
+        Directory.CreateSymbolicLink(Path.Combine(target, "link"), Path.GetDirectoryName(target)!);
+        await Assert.ThrowsAsync<IOException>(() =>
+            SyncPlan.CreateAsync(client, Path.Combine(alias, "folder"), "/", options, _token));
+    }
+
     private async Task<SyncPlan> Plan(NetdiskClient client, SyncMode mode, SyncDirection direction, bool recursive = false,
         string[]? patterns = null, SyncComparison compare = SyncComparison.Name | SyncComparison.Time | SyncComparison.Length) =>
         await SyncPlan.CreateAsync(client, _root.FullName, "/", Options(mode, direction, recursive, patterns, compare), _token);
