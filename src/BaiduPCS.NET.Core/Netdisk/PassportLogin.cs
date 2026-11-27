@@ -269,20 +269,24 @@ public sealed class PassportLogin : IDisposable
 
     private Credentials CollectCredentials(JsonElement data, string html)
     {
-        var cookies = BaiduTransport.ParseCookies(data.Text("cookieString"));
+        var cookies = BaiduCookieHeader.Parse(data.Text("cookieString"));
         foreach (Uri source in new[] { Passport, Home, PanHome })
         {
             foreach (Cookie cookie in _transport.Cookies.GetCookies(source))
-                cookies[cookie.Name] = cookie.Value;
+            {
+                if (BaiduCookieHeader.TryNormalizeValue(cookie.Value, out string value))
+                    cookies[cookie.Name] = value;
+            }
         }
 
-        string From(string key) => cookies.GetValueOrDefault(key) ?? data.Text(key.ToLowerInvariant());
+        string From(string key) => cookies.TryGetValue(key, out string? value) && value.Length != 0
+            ? value : data.Text(key.ToLowerInvariant());
         string token = Regex.Match(html, @"<stoken>netdisk#(?<value>[a-z0-9-]+)<", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking)
             .Groups["value"].Value;
         return new Credentials
         {
             Bduss = From("BDUSS"), Ptoken = From("PTOKEN"), Stoken = token.Length > 0 ? token : From("STOKEN"),
-            Baiduid = From("BAIDUID"), Sboxtkn = From("SBOXTKN"), Cookies = string.Join("; ", cookies.Select(cookie => cookie.Key + "=" + cookie.Value)),
+            Baiduid = From("BAIDUID"), Sboxtkn = From("SBOXTKN"), Cookies = BaiduCookieHeader.Format(cookies),
         };
     }
 

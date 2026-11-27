@@ -88,9 +88,7 @@ public sealed partial class NetdiskClient
 
     private (string Key, string Value)[] SignedParameters()
     {
-        string bduss = _account.Credentials.Bduss;
-        if (bduss.Length == 0)
-            BaiduTransport.ParseCookies(_account.Credentials.Cookies).TryGetValue("BDUSS", out bduss!);
+        string bduss = BaiduCookieHeader.GetBduss(_account.Credentials);
         if (string.IsNullOrEmpty(bduss))
             throw new InvalidOperationException("The account requires a BDUSS session for this operation.");
 

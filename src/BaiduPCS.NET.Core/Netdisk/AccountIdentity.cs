@@ -15,9 +15,7 @@ public static class AccountIdentity
     internal static async Task<Account> ResolveAsync(ClientSettings settings, Credentials credentials, ulong? manualId,
         HttpMessageHandler? handler, CancellationToken token)
     {
-        string bduss = credentials.Bduss;
-        if (bduss.Length == 0)
-            BaiduTransport.ParseCookies(credentials.Cookies).TryGetValue("BDUSS", out bduss!);
+        string bduss = BaiduCookieHeader.GetBduss(credentials);
         if (string.IsNullOrWhiteSpace(bduss))
             throw new ArgumentException("Supply a BDUSS token or cookies containing BDUSS.");
 

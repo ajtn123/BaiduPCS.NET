@@ -39,7 +39,7 @@ internal sealed class BaiduTransport : IDisposable
 
     private static HttpClient CreateClient(HttpMessageHandler handler) => new(handler) { Timeout = TimeSpan.FromSeconds(100) };
 
-    internal CookieContainer Cookies { get; } = new();
+    internal CookieContainer Cookies { get; } = new(CookieContainer.DefaultCookieLimit, 100, CookieContainer.DefaultCookieLengthLimit);
 
     internal Uri Pcs(string resource, string method, params (string Key, string Value)[] query) =>
         Build(Scheme, string.IsNullOrWhiteSpace(_settings.PcsHost) ? PcsHost : _settings.PcsHost,
@@ -169,20 +169,26 @@ internal sealed class BaiduTransport : IDisposable
 
     private static void LoadCookies(Credentials credentials, CookieContainer cookies)
     {
-        var combined = ParseCookies(credentials.Cookies);
-        AddCookie(combined, "BDUSS", credentials.Bduss);
-        AddCookie(combined, "PTOKEN", credentials.Ptoken);
-        AddCookie(combined, "STOKEN", credentials.Stoken);
-        AddCookie(combined, "BAIDUID", credentials.Baiduid);
-        AddCookie(combined, "SBOXTKN", credentials.Sboxtkn);
+        var combined = BaiduCookieHeader.Parse(credentials.Cookies);
+        SetCredential("BDUSS", credentials.Bduss);
+        SetCredential("PTOKEN", credentials.Ptoken);
+        SetCredential("STOKEN", credentials.Stoken);
+        SetCredential("BAIDUID", credentials.Baiduid);
+        SetCredential("SBOXTKN", credentials.Sboxtkn);
         try
         {
             foreach ((string name, string value) in combined)
-                cookies.Add(new Cookie(name, value, "/", ".baidu.com"));
+                cookies.Add(new Cookie(name, BaiduCookieHeader.WireValue(value), "/", ".baidu.com"));
         }
         catch (CookieException)
         {
             throw new ArgumentException("The saved Baidu cookies contain an invalid name or value.");
+        }
+
+        void SetCredential(string name, string value)
+        {
+            if (value.Length != 0)
+                combined[name] = BaiduCookieHeader.NormalizeCredential(name, value);
         }
     }
 
@@ -254,25 +260,6 @@ internal sealed class BaiduTransport : IDisposable
         NetworkFamily.PreferIpv6 => addresses.OrderByDescending(address => address.AddressFamily == AddressFamily.InterNetworkV6),
         _ => addresses,
     };
-
-    internal static Dictionary<string, string> ParseCookies(string cookieHeader)
-    {
-        var cookies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (string pair in cookieHeader.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-        {
-            int separator = pair.IndexOf('=');
-            if (separator > 0)
-                AddCookie(cookies, pair[..separator].Trim(), pair[(separator + 1)..].Trim().Trim('"'));
-        }
-
-        return cookies;
-    }
-
-    private static void AddCookie(Dictionary<string, string> cookies, string name, string value)
-    {
-        if (name.Length > 0 && value.Length > 0)
-            cookies[name] = value;
-    }
 
     public void Dispose()
     {

@@ -30,6 +30,8 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 
 On Windows, a helper installs the standalone update after the current process exits. The next launch clears the helper from a completed update. To roll back, close BaiduPCS.NET and restore the `.previous` file to the executable's original name.
 
+`account login --cookies-stdin` accepts a single browser Cookie request header. The optional `Cookie:` prefix, quoted values, comma-separated values, and existing percent escapes are handled during parsing. Cookie values such as session tokens and encoded strings are passed without URL decoding.
+
 ## Transfer examples
 
 ```sh
