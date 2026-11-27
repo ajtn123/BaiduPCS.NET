@@ -6,7 +6,7 @@ namespace BaiduPCS.Tests;
 public sealed class OperationDisplayTests
 {
     [Fact]
-    public async Task LiveTableAddsAndRemovesActiveRowsAndAdaptsToTerminalWidth()
+    public async Task LiveTableKeepsFinishedRowsAndAdaptsToTerminalWidth()
     {
         using var output = new StringWriter();
         IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
@@ -18,8 +18,8 @@ public sealed class OperationDisplayTests
         console.Profile.Width = 100;
         console.Profile.Height = 20;
         var display = new OperationDisplay(new CommonSettings(), "File", console: console);
-        var first = display.Begin("/first", 400);
-        var second = display.Begin("/second", 400);
+        var first = display.Begin(display.Enqueue("/first", 400));
+        var second = display.Begin(display.Enqueue("/second", 400));
         display.Report(first, 100, 400, null);
         display.Report(second, 200, 400, null);
         var complete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -39,9 +39,86 @@ public sealed class OperationDisplayTests
         complete.SetResult();
         await running;
         Assert.Contains("/second", narrow);
-        Assert.DoesNotContain("/first", narrow);
+        Assert.Contains("/first", narrow);
         Assert.DoesNotContain("Speed", narrow);
         Assert.Contains("Downloaded", output.ToString());
+    }
+
+    [Fact]
+    public void LiveTablePrefersActiveAndSoonestPendingRowsWhenHeightIsLimited()
+    {
+        using var output = new StringWriter();
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings { Out = new AnsiConsoleOutput(output) });
+        console.Profile.Width = 100;
+        var display = new OperationDisplay(new CommonSettings(), "File", console: console);
+        var finished = display.Enqueue("/finished", 1000);
+        display.Enqueue("/next", 1000);
+        var active = display.Enqueue("/active", 1000);
+        display.Enqueue("/later", 1000);
+        display.Enqueue("/last", 1000);
+        display.Begin(finished);
+        display.End(finished, "Downloaded");
+        display.Begin(active);
+        display.Report(active, 500, 1000, null);
+
+        console.Write(display.Render(100, 20));
+        string full = output.ToString();
+        Assert.Contains("/finished", full);
+        Assert.Contains("Downloaded", full);
+        Assert.Contains("/next", full);
+        Assert.Contains("Pending", full);
+        Assert.Contains("/active", full);
+        Assert.Contains("50%", full);
+        Assert.Contains("/later", full);
+        Assert.Contains("/last", full);
+        Assert.True(full.IndexOf("/last", StringComparison.Ordinal) < full.IndexOf("/finished", StringComparison.Ordinal));
+
+        output.GetStringBuilder().Clear();
+        console.Write(display.Render(100, 6));
+        string compact = output.ToString();
+        Assert.Contains("/active", compact);
+        Assert.Contains("/next", compact);
+        Assert.True(compact.IndexOf("/next", StringComparison.Ordinal) < compact.IndexOf("/active", StringComparison.Ordinal));
+        Assert.Contains("+ 3 more", compact);
+        Assert.DoesNotContain("/later", compact);
+        Assert.DoesNotContain("/finished", compact);
+
+        output.GetStringBuilder().Clear();
+        var otherFinished = display.Begin("/other-finished");
+        display.End(otherFinished, "Downloaded");
+        display.End(active, "Downloaded");
+        console.Write(display.Render(100, 8));
+        string pendingFirst = output.ToString();
+        Assert.DoesNotContain("/finished", pendingFirst);
+        Assert.DoesNotContain("/other-finished", pendingFirst);
+        Assert.Contains("/active", pendingFirst);
+        Assert.True(pendingFirst.IndexOf("/last", StringComparison.Ordinal) < pendingFirst.IndexOf("/next", StringComparison.Ordinal));
+        Assert.True(pendingFirst.IndexOf("/active", StringComparison.Ordinal) < pendingFirst.IndexOf("/last", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TransferColumnsKeepTheirPositionsAsNumbersGrow(bool raw)
+    {
+        using var output = new StringWriter();
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings { Out = new AnsiConsoleOutput(output) });
+        console.Profile.Width = 120;
+        var display = new OperationDisplay(new CommonSettings { RawNumbers = raw }, "File", console: console);
+        var item = display.Begin(display.Enqueue("/file", 25000000));
+        display.Report(item, 50, 25000000, null);
+        console.Write(display.Render(120, 20));
+        string header = Header();
+        Assert.Contains("Transferred", header);
+        Assert.Contains("Speed", header);
+        Assert.Contains("ETA", header);
+
+        output.GetStringBuilder().Clear();
+        display.Report(item, 12500000, 25000000, null);
+        console.Write(display.Render(120, 20));
+        Assert.Equal(header, Header());
+
+        string Header() => output.ToString().Split('\n').Single(line => line.Contains("Transferred", StringComparison.Ordinal));
     }
 
     [Fact]

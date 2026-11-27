@@ -5,12 +5,11 @@ using BaiduPCS.Netdisk;
 
 namespace BaiduPCS.Utilities;
 
-public sealed record StableRelease(string Tag, Version Version, IReadOnlySet<string> Assets);
+public sealed record StableRelease(string Tag, Version Version, IReadOnlyDictionary<string, string> AssetDigests);
 
 public sealed class ReleaseUpdater(HttpClient http)
 {
     public const string Repository = "ajtn123/BaiduPCS.NET";
-    public const string ChecksumFile = "SHA256SUMS";
     private const long MaximumExecutableSize = 512L * 1024 * 1024;
     private static readonly Uri LatestUrl = new($"https://api.github.com/repos/{Repository}/releases/latest");
 
@@ -33,9 +32,13 @@ public sealed class ReleaseUpdater(HttpClient http)
         if (!tag.StartsWith('v') || !TryParseVersion(tag[1..], out Version? version))
             throw new InvalidDataException("The GitHub release does not have a valid stable version tag.");
 
-        var assets = root.Items("assets").Where(asset => asset.Text("state") == "uploaded" || asset.Text("state").Length == 0)
-            .Select(asset => asset.Text("name")).ToHashSet(StringComparer.Ordinal);
-        return new StableRelease(tag, version!, assets);
+        var digests = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (JsonElement asset in root.Items("assets"))
+        {
+            if (asset.Text("state") == "uploaded" && !digests.TryAdd(asset.Text("name"), asset.Text("digest")))
+                throw new InvalidDataException("The GitHub release lists an asset more than once.");
+        }
+        return new StableRelease(tag, version!, digests);
     }
 
     public static bool IsNewer(StableRelease release, string current)
@@ -56,11 +59,10 @@ public sealed class ReleaseUpdater(HttpClient http)
         string extension = runtime.StartsWith("win-", StringComparison.Ordinal) ? ".exe" : "";
         string flavor = frameworkDependent ? "-framework-dependent" : "";
         string assetName = $"BaiduPCS.NET-{release.Tag}-{runtime}{flavor}{extension}";
-        if (!SupportedRuntime(runtime) || !release.Assets.Contains(assetName) || !release.Assets.Contains(ChecksumFile))
-            throw new InvalidOperationException($"The release has no verified {(frameworkDependent ? "framework-dependent" : "self-contained")} executable for {runtime}.");
+        if (!SupportedRuntime(runtime) || !release.AssetDigests.TryGetValue(assetName, out string? digest))
+            throw new InvalidOperationException($"The release has no {(frameworkDependent ? "framework-dependent" : "self-contained")} executable for {runtime}.");
 
-        string manifest = await ReadManifestAsync(AssetUri(release, ChecksumFile), cancellationToken);
-        byte[] expected = ReadAssetHash(manifest, assetName);
+        byte[] expected = ReadAssetDigest(digest);
         string stage = Path.Combine(Path.GetDirectoryName(target)!, ".baidupcs-update-" + Guid.NewGuid().ToString("N"));
         if (OperatingSystem.IsWindows())
             Directory.CreateDirectory(stage);
@@ -100,33 +102,14 @@ public sealed class ReleaseUpdater(HttpClient http)
         return backup;
     }
 
-    internal static byte[] ReadAssetHash(string manifest, string assetName)
+    private static byte[] ReadAssetDigest(string digest)
     {
-        string? hash = null;
-        foreach (string line in manifest.Split('\n'))
-        {
-            string trimmed = line.Trim();
-            int separator = trimmed.IndexOfAny([' ', '\t']);
-            if (separator < 0 || !trimmed[(separator + 1)..].TrimStart().TrimStart('*').Equals(assetName, StringComparison.Ordinal))
-                continue;
-            if (hash is not null || separator != 64 || !trimmed[..separator].All(char.IsAsciiHexDigit))
-                throw new InvalidDataException("The release checksum manifest contains an invalid or duplicate entry.");
+        const string prefix = "sha256:";
+        if (digest.Length != prefix.Length + 64 || !digest.StartsWith(prefix, StringComparison.Ordinal)
+            || !digest[prefix.Length..].All(char.IsAsciiHexDigit))
+            throw new InvalidDataException("The GitHub release asset does not have a valid SHA-256 digest.");
 
-            hash = trimmed[..separator];
-        }
-
-        return hash is null ? throw new InvalidDataException("The release checksum manifest does not list this executable.")
-            : Convert.FromHexString(hash);
-    }
-
-    private async Task<string> ReadManifestAsync(Uri uri, CancellationToken token)
-    {
-        using HttpResponseMessage response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token);
-        response.EnsureSuccessStatusCode();
-        await using Stream source = await response.Content.ReadAsStreamAsync(token);
-        using var content = new MemoryStream();
-        await CopyBoundedAsync(source, content, 128 * 1024, token);
-        return System.Text.Encoding.UTF8.GetString(content.ToArray());
+        return Convert.FromHexString(digest.AsSpan(prefix.Length));
     }
 
     private async Task DownloadExecutableAsync(Uri uri, string path, byte[] expected, CancellationToken token)

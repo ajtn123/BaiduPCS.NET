@@ -47,6 +47,40 @@ public sealed class NetdiskClientTests
         Assert.Equal(42, result.Files[1].Size);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ListsRemainingSharesAfterAnExtractionCodeTimeoutUnlessTheCallerCancels(bool cancelCaller)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var handler = new FixtureHandler((request, count) =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            if (count == 1)
+                return Json(new { list = new[] { new { shareId = 1 }, new { shareId = 2 } } });
+            if (count == 2)
+            {
+                if (cancelCaller)
+                    cancellation.Cancel();
+                throw new TaskCanceledException("Fixture timeout.");
+            }
+            return Json(new { pwd = "test" });
+        });
+        using var client = Client(handler);
+
+        if (cancelCaller)
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.ListSharesAsync(cancellationToken: cancellation.Token));
+            Assert.Equal(2, handler.Count);
+        }
+        else
+        {
+            IReadOnlyList<ShareRecord> shares = await client.ListSharesAsync(cancellationToken: cancellation.Token);
+            Assert.Equal(new string?[] { null, "test" }, shares.Select(share => share.Code));
+            Assert.Equal(3, handler.Count);
+        }
+    }
+
     [Fact]
     public async Task ImportsASelectedShareFileIntoTheRequestedDirectory()
     {

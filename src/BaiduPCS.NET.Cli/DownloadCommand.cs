@@ -67,13 +67,15 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
             var timer = Stopwatch.StartNew();
             var display = new OperationDisplay(settings, "File", settings.WorkerStatus);
             var numbers = new DisplayNumbers(settings.RawNumbers);
+            var queue = files.Select(item => (Item: item, Row: display.Enqueue(item.Entry.Path, item.Entry.Size))).ToArray();
             long totalBytes = 0;
-            await display.RunAsync(() => Parallel.ForEachAsync(files,
+            await display.RunAsync(() => Parallel.ForEachAsync(queue,
                 new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = cancellationToken },
-                async (item, token) =>
+                async (work, token) =>
                 {
+                    DownloadItem item = work.Item;
                     string path = item.Entry.Path;
-                    OperationDisplay.Item row = display.Begin(path, item.Entry.Size);
+                    OperationDisplay.Item row = display.Begin(work.Row);
                     try
                     {
                         if (!settings.Test)

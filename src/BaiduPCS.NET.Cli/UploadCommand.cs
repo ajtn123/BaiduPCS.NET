@@ -54,6 +54,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
             var timer = Stopwatch.StartNew();
             var display = new OperationDisplay(settings, "File", settings.Verbose);
             var numbers = new DisplayNumbers(settings.RawNumbers);
+            var queue = files.Select(item => (Item: item, Row: display.Enqueue(item.Target, item.File.Length))).ToArray();
             long totalBytes = 0;
             int failed = 0;
             var parallel = new ParallelOptions
@@ -61,9 +62,10 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                 MaxDegreeOfParallelism = settings.FileConcurrency ?? profile.Settings.UploadConcurrency,
                 CancellationToken = cancellationToken,
             };
-            await display.RunAsync(() => Parallel.ForEachAsync(files, parallel, async (item, token) =>
+            await display.RunAsync(() => Parallel.ForEachAsync(queue, parallel, async (work, token) =>
             {
-                OperationDisplay.Item row = display.Begin(item.Target, item.File.Length);
+                UploadItem item = work.Item;
+                OperationDisplay.Item row = display.Begin(work.Row);
                 try
                 {
                     UploadResult result = await client.UploadAsync(item.File.FullName, item.Target, checkpoints, options,

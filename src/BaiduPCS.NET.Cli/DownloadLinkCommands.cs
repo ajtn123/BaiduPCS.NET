@@ -45,11 +45,12 @@ internal sealed class DownloadLinksCommand : RemoteCommand<DownloadLinksCommand.
 
             int exitCode = 0;
             var display = new OperationDisplay(settings, "File");
+            var queue = paths.Select(path => (Path: path, Row: display.Enqueue(path))).ToArray();
             await display.RunAsync(async () =>
             {
-                foreach (string path in paths)
+                foreach (var (path, queued) in queue)
                 {
-                    var row = display.Begin(path);
+                    var row = display.Begin(queued);
                     try
                     {
                         IReadOnlyList<Uri> links = await client.LocateDownloadAsync(path, cancellationToken);
@@ -84,12 +85,13 @@ internal sealed class ChecksumCommand : AsyncCommand<ChecksumCommand.Settings>
         int exitCode = 0;
         var display = new OperationDisplay(settings, "File");
         var numbers = new DisplayNumbers(settings.RawNumbers);
+        var queue = settings.Files.Select(path => (Path: path, Row: display.Enqueue(path))).ToArray();
         await display.RunAsync(async () =>
         {
-            foreach (string path in settings.Files)
+            foreach (var (path, queued) in queue)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var row = display.Begin(path);
+                var row = display.Begin(queued);
                 try
                 {
                     await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,

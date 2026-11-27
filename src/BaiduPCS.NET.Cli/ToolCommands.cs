@@ -62,14 +62,15 @@ internal abstract class ToolCryptoCommand(bool decrypt) : AsyncCommand<ToolCrypt
         byte[] key = Encoding.UTF8.GetBytes(secret);
         int status = 0;
         var display = new OperationDisplay(settings, "File");
+        var queue = settings.Files.Select(file => (File: file, Row: display.Enqueue(file))).ToArray();
         try
         {
             await display.RunAsync(async () =>
             {
-                foreach (string file in settings.Files)
+                foreach (var (file, queued) in queue)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var row = display.Begin(file);
+                    var row = display.Begin(queued);
                     try
                     {
                         string output = await TransformAsync(file, settings, key, cancellationToken);

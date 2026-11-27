@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
@@ -8,9 +9,13 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
 {
     private readonly IAnsiConsole? _console = console ?? GetInteractiveConsole();
     private readonly object _gate = new();
+    private readonly List<Item> _items = [];
+    private readonly LinkedList<Item> _pending = new();
     private readonly List<Item> _active = [];
-    private readonly List<Result> _results = [];
+    private readonly List<Item> _finished = [];
     private readonly DisplayNumbers _numbers = new(settings.RawNumbers);
+    private bool _hasTransfers;
+    private int _rawTransferWidth = 29;
 
     internal async Task RunAsync(Func<Task> action)
     {
@@ -39,12 +44,12 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
         }
         finally
         {
-            if (_results.Count != 0)
+            if (_finished.Count != 0)
             {
                 var table = CreateTable().AddColumns(itemHeading, "Result");
-                foreach (Result row in _results)
+                foreach (Item row in Enumerable.Reverse(_items).Where(item => item.Result is not null))
                 {
-                    string result = Markup.Escape(row.Message);
+                    string result = Markup.Escape(row.Result!);
                     table.AddRow(new Text(row.Name), new Markup(row.Failed ? $"[red]{result}[/]" : result));
                 }
                 _console.Write(table);
@@ -52,13 +57,39 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
         }
     }
 
-    internal Item Begin(string name, long? total = null)
+    internal Item Enqueue(string name, long? total = null)
     {
         var item = new Item(name, total);
         if (_console is not null)
         {
             lock (_gate)
+            {
+                _items.Add(item);
+                item.Pending = _pending.AddLast(item);
+                _hasTransfers |= total.HasValue;
+                if (settings.RawNumbers && total is long length)
+                {
+                    int digits = length.ToString(CultureInfo.InvariantCulture).Length;
+                    _rawTransferWidth = Math.Max(_rawTransferWidth, digits * 2 + "/ bytes".Length);
+                }
+            }
+        }
+        return item;
+    }
+
+    internal Item Begin(string name) => Begin(Enqueue(name));
+
+    internal Item Begin(Item item)
+    {
+        lock (_gate)
+        {
+            item.StartedAt = Stopwatch.GetTimestamp();
+            if (item.Pending is { } node)
+            {
+                _pending.Remove(node);
+                item.Pending = null;
                 _active.Add(item);
+            }
         }
         return item;
     }
@@ -67,16 +98,18 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
     {
         lock (_gate)
         {
-            double elapsed = item.Elapsed.Elapsed.TotalSeconds;
+            double elapsed = Elapsed(item);
             item.Completed = Math.Clamp(Math.Max(item.Completed, completed), 0, total);
             item.Total = total;
+            _hasTransfers = true;
             item.Part = part;
-            item.Rate.Observe(item.Completed, elapsed, resumed);
+            RollingTransferRate rate = item.Rate ??= new();
+            rate.Observe(item.Completed, elapsed, resumed);
             if (_console is null && showWorker && elapsed - item.LastLog >= 1)
             {
                 item.LastLog = elapsed;
                 string worker = part is >= 0 ? $" part {part}" : "";
-                Console.Error.WriteLine($"{item.Name}{worker}: {TransferText(item)}, {_numbers.Speed(item.Rate.At(elapsed))}");
+                Console.Error.WriteLine($"{item.Name}{worker}: {TransferText(item)}, {_numbers.Speed(rate.At(elapsed))}");
             }
         }
     }
@@ -88,7 +121,10 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
             lock (_gate)
             {
                 _active.Remove(item);
-                _results.Add(new Result(item.Name, message, failed));
+                item.Result = message;
+                item.Failed = failed;
+                item.Rate = null;
+                _finished.Add(item);
             }
             return;
         }
@@ -104,50 +140,75 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
         !Console.IsInputRedirected && !Console.IsOutputRedirected
         && AnsiConsole.Profile.Capabilities is { Interactive: true, Ansi: true } ? AnsiConsole.Console : null;
 
-    private IRenderable Render(int width, int height)
+    internal IRenderable Render(int width, int height)
     {
         lock (_gate)
         {
-            bool bytes = width >= 44;
-            bool speed = width >= 62;
-            bool eta = width >= 79;
-            bool worker = showWorker && width >= 94;
-            int barWidth = Math.Clamp(width / 9, 5, 16);
-            var table = CreateTable().AddColumns(itemHeading, "Progress");
-            if (bytes)
-                table.AddColumn("Transferred");
-            if (speed)
-                table.AddColumn("Speed");
-            if (eta)
-                table.AddColumn("ETA");
-            if (worker)
-                table.AddColumn("Part");
+            if (_items.Count == 0)
+                return Text.Empty;
 
-            int capacity = Math.Min(_active.Count, Math.Max(1, height - 6));
-            for (int index = 0; index < capacity; index++)
+            int transferWidth = settings.RawNumbers ? _rawTransferWidth : 23;
+            int speedWidth = settings.RawNumbers ? 18 : 13;
+            const int etaWidth = 11;
+            const int partWidth = 6;
+            int progressWidth = Math.Clamp(width / 6, 9, 22);
+            int free = width - progressWidth - 4;
+            bool bytes = free >= transferWidth + 12 && _hasTransfers;
+            if (bytes)
+                free -= transferWidth + 2;
+            bool speed = bytes && free >= speedWidth + 12;
+            if (speed)
+                free -= speedWidth + 2;
+            bool eta = speed && free >= etaWidth + 12;
+            if (eta)
+                free -= etaWidth + 2;
+            bool worker = showWorker && bytes && free >= partWidth + 12;
+            if (worker)
+                free -= partWidth + 2;
+
+            var table = CreateTable().AddColumn(Column(itemHeading, Math.Max(1, free)))
+                .AddColumn(Column("Progress", progressWidth));
+            if (bytes)
+                table.AddColumn(Column("Transferred", transferWidth).RightAligned());
+            if (speed)
+                table.AddColumn(Column("Speed", speedWidth).RightAligned());
+            if (eta)
+                table.AddColumn(Column("ETA", etaWidth).RightAligned());
+            if (worker)
+                table.AddColumn(Column("Part", partWidth).RightAligned());
+
+            int capacity = Math.Max(1, height - 3);
+            bool overflow = _items.Count > capacity;
+            IEnumerable<Item> prioritized = overflow
+                ? _active.Concat(_pending).Concat(Enumerable.Range(0, _finished.Count).Select(index => _finished[^(index + 1)]))
+                    .Take(Math.Max(1, capacity - 1))
+                : _items;
+            int shown = 0;
+            foreach (Item item in prioritized.Reverse())
             {
-                Item item = _active[index];
-                double average = item.Rate.At(item.Elapsed.Elapsed.TotalSeconds);
-                var row = new List<IRenderable> { new Text(item.Name) { Overflow = Overflow.Ellipsis }, Progress(item, barWidth) };
+                double average = item.Rate?.At(Elapsed(item)) ?? 0;
+                var row = new List<IRenderable> { Cell(item.Name), Progress(item, progressWidth - 6) };
                 if (bytes)
-                    row.Add(new Text(item.Total is null ? "" : TransferText(item)));
+                    row.Add(Cell(item.Pending is not null || item.Total is null ? "" : TransferText(item)));
                 if (speed)
-                    row.Add(new Text(item.Total is null ? "" : _numbers.Speed(average)));
+                    row.Add(Cell(average > 0 ? _numbers.Speed(average) : ""));
                 if (eta)
-                    row.Add(new Text(item.Total > item.Completed && average > 0
+                    row.Add(Cell(item.Total > item.Completed && average > 0
                         ? _numbers.Duration((item.Total.Value - item.Completed) / average) : ""));
                 if (worker)
-                    row.Add(new Text(item.Part is >= 0 ? $"{item.Part}" : ""));
+                    row.Add(Cell(item.Result is null && item.Part is >= 0 ? $"{item.Part}" : ""));
                 table.AddRow(row);
+                shown++;
             }
 
-            if (_active.Count == 0)
-                return new Text($"{_results.Count} finished");
-            return capacity == _active.Count ? table : new Rows(table, new Text($"+ {_active.Count - capacity} active"));
+            return overflow ? new Rows(new Text($"+ {_items.Count - shown} more"), table) : table;
         }
     }
 
     private static Table CreateTable() => new Table().Border(TableBorder.Simple).Expand();
+    private static Text Cell(string text) => new(text) { Overflow = Overflow.Ellipsis };
+    private static TableColumn Column(string title, int width) => new TableColumn(title).Width(width).NoWrap();
+    private static double Elapsed(Item item) => Stopwatch.GetElapsedTime(item.StartedAt).TotalSeconds;
 
     private string TransferText(Item item) => settings.RawNumbers
         ? $"{_numbers.Bytes(item.Completed, unit: false)}/{_numbers.Bytes(item.Total ?? 0)}"
@@ -155,26 +216,32 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
 
     private static IRenderable Progress(Item item, int width)
     {
+        if (item.Result is { } result)
+            return item.Failed ? new Markup("[red]Failed[/]") : Cell(result);
+        if (item.Pending is not null)
+            return new Text("Pending");
         if (item.Total is not > 0)
             return new Text("Working…");
 
         double fraction = (double)item.Completed / item.Total.Value;
         int filled = (int)(width * fraction);
-        return new Markup($"[green]{new string('━', filled)}[/][grey]{new string('━', width - filled)}[/] {fraction:P0}");
+        return new Markup(FormattableString.Invariant($"[green]{new string('━', filled)}[/][grey]{new string('━', width - filled)}[/] {fraction * 100:0}%"));
     }
 
     internal sealed class Item(string name, long? total)
     {
         internal string Name { get; } = string.Concat(name.Select(character => char.IsControl(character) ? '�' : character));
-        internal Stopwatch Elapsed { get; } = Stopwatch.StartNew();
-        internal RollingTransferRate Rate { get; } = new();
+        internal LinkedListNode<Item>? Pending { get; set; }
+        internal long StartedAt { get; set; }
+        internal RollingTransferRate? Rate { get; set; }
+        internal string? Result { get; set; }
+        internal bool Failed { get; set; }
         internal long? Total { get; set; } = total;
         internal long Completed { get; set; }
         internal int? Part { get; set; }
         internal double LastLog { get; set; } = -1;
     }
 
-    private sealed record Result(string Name, string Message, bool Failed);
 }
 
 internal sealed class RollingTransferRate

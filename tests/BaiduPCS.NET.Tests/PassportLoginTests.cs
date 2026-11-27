@@ -135,6 +135,37 @@ public sealed class PassportLoginTests
         Assert.Equal("Manual", account.Name);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FallsBackFromAnIdentityTimeoutWithoutIgnoringCallerCancellation(bool cancelCaller)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        int requests = 0;
+        using var handler = new Handler((request, _) =>
+        {
+            requests++;
+            if (request.RequestUri!.Host != "tieba.baidu.com")
+                return Task.FromResult(Json(new { records = new[] { new { uid = 33, username = "Pan" } } }));
+            if (cancelCaller)
+                cancellation.Cancel();
+            throw new TaskCanceledException("Fixture timeout.");
+        });
+        var credentials = new Credentials { Bduss = "fixture-bduss" };
+        Task<Account> identity = AccountIdentity.ResolveAsync(new ClientSettings(), credentials, null, handler, cancellation.Token);
+
+        if (cancelCaller)
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => identity);
+            Assert.Equal(1, requests);
+        }
+        else
+        {
+            Assert.Equal(33UL, (await identity).Id);
+            Assert.Equal(2, requests);
+        }
+    }
+
     private static PassportLogin Create(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) =>
         new(new ClientSettings(), new Handler((request, token) => request.RequestUri!.AbsolutePath switch
         {

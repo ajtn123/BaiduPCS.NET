@@ -15,7 +15,7 @@ public sealed class ReleaseUpdaterTests
     [InlineData("1.0.0", "2.0.0-dev", false)]
     public void ComparesStableReleasesNumerically(string stable, string current, bool expected)
     {
-        var release = new StableRelease("v" + stable, Version.Parse(stable), new HashSet<string>());
+        var release = new StableRelease("v" + stable, Version.Parse(stable), new Dictionary<string, string>());
         Assert.Equal(expected, ReleaseUpdater.IsNewer(release, current));
     }
 
@@ -30,8 +30,8 @@ public sealed class ReleaseUpdaterTests
         string flavor = frameworkDependent ? "-framework-dependent" : "";
         string assetName = $"BaiduPCS.NET-v1.2.3-{runtime}{flavor}{extension}";
         byte[] executable = "replacement"u8.ToArray();
-        string checksum = Convert.ToHexStringLower(SHA256.HashData(executable));
-        using var http = Fixture(assetName, executable, checksum);
+        string digest = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(executable));
+        using var http = Fixture(assetName, executable, digest);
         var updater = new ReleaseUpdater(http);
         StableRelease? release = await updater.LatestAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(release);
@@ -93,7 +93,7 @@ public sealed class ReleaseUpdaterTests
     public async Task RejectsAnExecutableWithTheWrongChecksum()
     {
         const string assetName = "BaiduPCS.NET-v1.2.3-win-x64.exe";
-        using var http = Fixture(assetName, [1, 2, 3], new string('0', 64));
+        using var http = Fixture(assetName, [1, 2, 3], "sha256:" + new string('0', 64));
         var updater = new ReleaseUpdater(http);
         StableRelease? release = await updater.LatestAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(release);
@@ -113,13 +113,38 @@ public sealed class ReleaseUpdaterTests
         }
     }
 
-    private static HttpClient Fixture(string name, byte[] executable, string checksum) => new(new Handler(request =>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("sha256:abcd")]
+    [InlineData("sha512:0000000000000000000000000000000000000000000000000000000000000000")]
+    [InlineData("sha256:000000000000000000000000000000000000000000000000000000000000000z")]
+    public async Task RejectsAnInvalidAssetDigestBeforeDownloading(string? digest)
+    {
+        const string assetName = "BaiduPCS.NET-v1.2.3-win-x64.exe";
+        using var http = Fixture(assetName, null, digest);
+        var updater = new ReleaseUpdater(http);
+        var token = TestContext.Current.CancellationToken;
+        StableRelease? release = await updater.LatestAsync(token);
+        Assert.NotNull(release);
+        string directory = Directory.CreateTempSubdirectory("baidupcs-release-fixture-").FullName;
+        try
+        {
+            string target = Path.Combine(directory, "baidupcs.exe");
+            await Assert.ThrowsAsync<InvalidDataException>(() => updater.StageStandaloneAsync(release, "win-x64", target, token));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory);
+        }
+    }
+
+    private static HttpClient Fixture(string name, byte[]? executable, string? digest) => new(new Handler(request =>
     {
         HttpContent data = request.RequestUri!.AbsolutePath.Split('/')[^1] switch
         {
-            "latest" => JsonContent.Create(new { tag_name = "v1.2.3", assets = new[] { new { name }, new { name = "SHA256SUMS" } } }),
-            "SHA256SUMS" => new StringContent(checksum + "  " + name + "\n"),
-            var item when item == name => new ByteArrayContent(executable),
+            "latest" => JsonContent.Create(new { tag_name = "v1.2.3", assets = new[] { new { name, state = "uploaded", digest } } }),
+            var item when item == name && executable is not null => new ByteArrayContent(executable),
             _ => throw new InvalidOperationException("Unexpected fixture request."),
         };
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = data };

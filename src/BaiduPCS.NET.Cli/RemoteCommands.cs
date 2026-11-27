@@ -48,13 +48,17 @@ internal abstract class RemoteCommand<TSettings> : ProfileCommand<TSettings> whe
     {
         var display = new OperationDisplay(settings, "Item");
         int exitCode = 0;
+        var queue = items.Select(item =>
+        {
+            string name = describe(item);
+            return (Item: item, Name: name, Row: display.Enqueue(name));
+        }).ToArray();
         await display.RunAsync(async () =>
         {
-            foreach (T item in items)
+            foreach (var (item, name, queued) in queue)
             {
                 token.ThrowIfCancellationRequested();
-                string name = describe(item);
-                OperationDisplay.Item row = display.Begin(name);
+                OperationDisplay.Item row = display.Begin(queued);
                 try
                 {
                     await action(item);

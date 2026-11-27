@@ -64,7 +64,8 @@ public sealed partial class NetdiskClient
                         ("sign", sign)), "share details", true, cancellationToken);
                     code = details.Text("pwd").Trim();
                 }
-                catch (Exception error) when (error is BaiduApiException or HttpRequestException or InvalidDataException)
+                catch (Exception error) when (error is BaiduApiException or HttpRequestException or InvalidDataException
+                    || error is OperationCanceledException && !cancellationToken.IsCancellationRequested)
                 {
                     // The list remains usable when an individual extraction code cannot be retrieved.
                 }

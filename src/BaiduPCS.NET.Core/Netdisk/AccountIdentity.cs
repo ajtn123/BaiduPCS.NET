@@ -28,7 +28,7 @@ public static class AccountIdentity
         {
             return await ReadTiebaIdentityAsync(transport, credentials, bduss, token);
         }
-        catch (Exception error) when (IsLookupFailure(error))
+        catch (Exception error) when (IsLookupFailure(error, token))
         {
             lookupError = error;
         }
@@ -48,7 +48,7 @@ public static class AccountIdentity
             if (manualName.Length > 0 && TryReadId(entry, out id, "uk"))
                 return new Account { Id = id, Name = manualName, Credentials = credentials };
         }
-        catch (Exception error) when (IsLookupFailure(error))
+        catch (Exception error) when (IsLookupFailure(error, token))
         {
             lookupError = error;
         }
@@ -109,7 +109,7 @@ public static class AccountIdentity
             string fullName = Value(details, "name", "name_show");
             return new Account { Id = id, Name = fullName.Length == 0 ? name : fullName, Sex = sex, Age = age, Credentials = credentials };
         }
-        catch (Exception error) when (IsLookupFailure(error))
+        catch (Exception error) when (IsLookupFailure(error, token))
         {
             return new Account { Id = id, Name = name, Credentials = credentials };
         }
@@ -141,5 +141,7 @@ public static class AccountIdentity
         return "";
     }
 
-    private static bool IsLookupFailure(Exception error) => error is BaiduApiException or HttpRequestException or InvalidDataException;
+    private static bool IsLookupFailure(Exception error, CancellationToken token) =>
+        error is BaiduApiException or HttpRequestException or InvalidDataException
+        || error is OperationCanceledException && !token.IsCancellationRequested;
 }

@@ -119,7 +119,9 @@ jobs:
               cat "$name.runtime-notices.txt"
             done
           } > LICENSES.txt
-          sha256sum "${binaries[@]}" LICENSES.txt > SHA256SUMS
-          sha256sum --check SHA256SUMS
-          gh release create "$GITHUB_REF_NAME" "${binaries[@]}" SHA256SUMS LICENSES.txt \
+          gh release create "$GITHUB_REF_NAME" "${binaries[@]}" LICENSES.txt \
             --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest
+          expected=$(sha256sum "${binaries[@]}" LICENSES.txt | sed 's/^/sha256:/' | sort)
+          published=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+            --jq '.assets[] | "\(.digest)  \(.name)"' | sort)
+          diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$published")
