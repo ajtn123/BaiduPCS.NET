@@ -1,10 +1,22 @@
 # BaiduPCS.NET
 
-BaiduPCS.NET is a .NET 10 command-line client for Baidu Netdisk. It ports the workflows of [BaiduPCS-Go](https://github.com/qjfoidnh/BaiduPCS-Go) to Spectre.Console.Cli and provides an interactive shell and commands for scripts.
+[![CI](https://github.com/ajtn123/BaiduPCS.NET/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/ajtn123/BaiduPCS.NET/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/ajtn123/BaiduPCS.NET)](https://github.com/ajtn123/BaiduPCS.NET/releases/latest)
 
-## Quick start
+BaiduPCS.NET is a .NET 10 command-line client for Baidu Netdisk. It ports BaiduPCS-Go workflows to Spectre.Console.Cli and provides an interactive shell and commands for scripts. [BaiduPCS-Go](https://github.com/qjfoidnh/BaiduPCS-Go)
 
-Download the standalone executable for your operating system and architecture. Each download contains the .NET runtime. On Windows, rename it to `baidupcs.exe` and run it from PowerShell. [GitHub releases](https://github.com/ajtn123/BaiduPCS.NET/releases/latest)
+## Download
+
+Choose the executable for your system. Each executable includes the .NET runtime. Check its SHA-256 against the release's `SHA256SUMS`. [Latest release](https://github.com/ajtn123/BaiduPCS.NET/releases/latest)
+
+| System | Asset suffixes |
+| --- | --- |
+| Windows | `win-x64.exe`, `win-arm64.exe` |
+| macOS | `osx-x64`, `osx-arm64` |
+| Linux (glibc) | `linux-x64`, `linux-arm64` |
+| Linux (musl) | `linux-musl-x64`, `linux-musl-arm64` |
+
+On Windows, rename the file to `baidupcs.exe` and run it from PowerShell.
 
 ```powershell
 .\baidupcs.exe --help
@@ -17,15 +29,9 @@ chmod +x baidupcs
 ./baidupcs --help
 ```
 
-Put the executable on your PATH to use the `baidupcs` commands below, or keep using its relative path.
+## Quick start
 
-To run from source, build or run the CLI project with the .NET 10 SDK.
-
-```sh
-dotnet run --project src/BaiduPCS.NET.Cli -- --help
-```
-
-Import an existing BaiduPCS-Go profile, or sign in interactively.
+Put the executable on your PATH to use these examples, or use the relative path shown above. Import an existing BaiduPCS-Go profile with `account import-go`, or run `account login` to sign in interactively.
 
 ```sh
 baidupcs account import-go
@@ -38,8 +44,9 @@ baidupcs ls /
 
 ```sh
 baidupcs mkdir /example
-baidupcs upload ./notes.txt /example
-baidupcs d /example/notes.txt --output-directory ./downloads
+baidupcs cd /example
+baidupcs u ./notes.txt .
+baidupcs d notes.txt --output-directory ./downloads
 baidupcs shell
 ```
 
@@ -59,11 +66,11 @@ Run `baidupcs` in a terminal to enter the shell. Use `help`, Tab completion, and
 
 Use `ls` or `ll` for `list`, `d` for `download`, and `u` for `upload`. `cd` changes the remote working directory. These names work in the interactive shell and in one-shot commands. For all options and aliases, see [Command reference and migration](docs/commands.md).
 
-## Configuration and release builds
+## Configuration
 
 `baidupcs env` shows the active profile path. Set `BAIDUPCS_CONFIG_DIR` to use a separate profile. The profile contains session credentials. Keep it in a user-private directory and keep it out of version control.
 
-Build and run the offline fixture tests with `dotnet build` and `dotnet test`. Release executables target Windows x64 and Arm64, macOS x64 and Arm64, and Linux x64 and Arm64 on glibc and musl. Android, iOS, FreeBSD, Linux x86, and MIPS are outside the release matrix. Use the published `SHA256SUMS` to verify the executable.
+## Baidu service compatibility
 
 Baidu can change or retire endpoints and restrict operations by account. Assisted verification with BaiduPCS-Go 4.0.1 confirmed profile import, quota, directory and file operations, bidirectional uploads and downloads, share creation and cancellation, and recycle restoration. It also confirmed offline task listing, query, and deletion.
 
@@ -71,9 +78,12 @@ With the tested session, both clients failed to generate Pan web download links 
 
 Standalone rapid-link import was disabled in the pinned Go command. Checksum links and manifest export remain available for recording file metadata.
 
-See [Architecture and API design](docs/architecture.md) for the implementation and verification details.
+## Project guides
 
-Maintainers can find the CI and publishing steps in the [release guide](docs/release.md).
+- Build from source, run the tests, and submit changes. [Contributing](CONTRIBUTING.md)
+- Report vulnerabilities privately and protect account credentials. [Security policy](SECURITY.md)
+- Read about the CLI, core API, and verification. [Architecture and API design](docs/architecture.md)
+- Build and publish standalone releases. [Release guide](docs/release.md)
 
 ## License
 
