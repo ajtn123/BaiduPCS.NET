@@ -7,6 +7,20 @@ BaiduPCS.NET is a .NET 10 command-line client for Baidu Netdisk. It ports BaiduP
 
 ## Download
 
+The installer picks the executable for your OS and architecture, including musl on Alpine Linux. It uses the framework-dependent build when a compatible .NET 10 or later runtime can launch it, and otherwise installs the self-contained build. It verifies the download against GitHub’s SHA-256 digest. [PowerShell installer](install.ps1) · [Shell installer](install.sh)
+
+```powershell
+./install.ps1
+```
+
+```sh
+sh ./install.sh
+```
+
+The default install directory is `%LOCALAPPDATA%\BaiduPCS.NET\bin` on Windows and `~/.local/bin` on macOS and Linux. Use `-InstallDir` or `--install-dir` to select another directory, and `-SelfContained` or `--self-contained` to bundle the runtime. The shell installer uses `curl`, either `jq` or Python 3, and either `sha256sum` or `shasum`.
+
+### Manual download
+
 Choose the executable for your system. Releases provide both self-contained and framework-dependent single files. Assets with `-framework-dependent` in the filename use an installed .NET 10 runtime or roll forward to a newer compatible runtime. Self-contained assets include .NET. Check the executable's SHA-256 against the value GitHub displays in the release's Assets section. [Latest release](https://github.com/ajtn123/BaiduPCS.NET/releases/latest)
 
 | System | Asset suffixes |

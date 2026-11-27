@@ -66,6 +66,47 @@ jobs:
           if ($env:GITHUB_REF_TYPE -eq 'tag') { $options.ReleaseVersion = $env:GITHUB_REF_NAME.Substring(1) }
           & ./.github/scripts/package-standalone.ps1 @options
           & ./.github/scripts/package-standalone.ps1 @options -FrameworkDependent
+      - name: Verify installer selection and installation
+        if: github.repository == 'ajtn123/BaiduPCS.NET'
+        shell: pwsh
+        env:
+          RUNTIME: ${{ matrix.rid }}
+        run: |
+          $auto = Join-Path $env:RUNNER_TEMP 'baidupcs-install-auto'
+          $standalone = Join-Path $env:RUNNER_TEMP 'baidupcs-install-standalone'
+          if ($env:RUNTIME.StartsWith('linux-musl-')) {
+              $mount = "type=bind,source=$PWD,target=/repo,readonly"
+              docker run --rm --user 0:0 --mount $mount mcr.microsoft.com/dotnet/runtime:10.0-alpine-extra sh -ec '
+                apk add --no-cache curl jq
+                result=$(sh /repo/install.sh --install-dir /tmp/auto)
+                printf "%s\n" "$result"
+                printf "%s\n" "$result" | grep -F "(framework-dependent, linux-musl-"
+                sh /repo/install.sh --install-dir /tmp/standalone --self-contained
+                test "$(/tmp/auto/baidupcs --version)" = "$(/tmp/standalone/baidupcs --version)"
+              '
+              exit $LASTEXITCODE
+          }
+          if ($IsWindows) {
+              $detected = & ./install.ps1 -InstallDir $auto 6>&1
+              & ./install.ps1 -InstallDir $standalone -SelfContained
+              $extension = '.exe'
+          } else {
+              $detected = sh ./install.sh --install-dir $auto
+              if ($LASTEXITCODE) { exit $LASTEXITCODE }
+              sh ./install.sh --install-dir $standalone --self-contained
+              if ($LASTEXITCODE) { exit $LASTEXITCODE }
+              $extension = ''
+          }
+          $detected
+          if (($detected -join ' ') -notmatch "(?i)\(framework-dependent, $env:RUNTIME\)") {
+              throw "The installer did not select the expected framework-dependent asset for $env:RUNTIME."
+          }
+          $autoVersion = & (Join-Path $auto "baidupcs$extension") --version
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $standaloneVersion = & (Join-Path $standalone "baidupcs$extension") --version
+          if ($LASTEXITCODE -ne 0 -or $autoVersion -ne $standaloneVersion) {
+              throw 'Installed executable versions differ.'
+          }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: standalone-${{ matrix.rid }}
@@ -119,9 +160,10 @@ jobs:
               cat "$name.runtime-notices.txt"
             done
           } > LICENSES.txt
-          gh release create "$GITHUB_REF_NAME" "${binaries[@]}" LICENSES.txt \
+          cp ../../install.ps1 ../../install.sh .
+          gh release create "$GITHUB_REF_NAME" "${binaries[@]}" LICENSES.txt install.ps1 install.sh \
             --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest
-          expected=$(sha256sum "${binaries[@]}" LICENSES.txt | sed 's/^/sha256:/' | sort)
+          expected=$(sha256sum "${binaries[@]}" LICENSES.txt install.ps1 install.sh | sed 's/^/sha256:/' | sort)
           published=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
             --jq '.assets[] | "\(.digest)  \(.name)"' | sort)
           diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$published")

@@ -26,10 +26,13 @@ $executable = Join-Path $output $name
 # A self-contained publish adds SDK-versioned runtime packs to the restore graph.
 # Use a separate, untracked lock-file path to keep the framework-dependent lock files intact.
 $selfContained = (!$FrameworkDependent).ToString().ToLowerInvariant()
+$optimization = if ($FrameworkDependent) { @() } else {
+    @('-p:PublishReadyToRun=true', '-p:PublishReadyToRunComposite=false', '-p:EnableCompressionInSingleFile=true')
+}
 dotnet publish $project --configuration Release --runtime $Runtime --self-contained $selfContained `
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=embedded `
     -p:NuGetLockFilePath=packages.publish.lock.json -p:RestorePackagesWithLockFile=false `
-    --output $publish @arguments
+    --output $publish @arguments @optimization
 
 $files = @(Get-ChildItem -LiteralPath $publish -Force)
 if ($files.Count -ne 1 -or $files[0].Name -ne "baidupcs$extension") {
@@ -54,17 +57,42 @@ if (!$FrameworkDependent) {
     ) | Set-Content -LiteralPath (Join-Path $output "$name.runtime-notices.txt")
 }
 
-if ($Runtime.StartsWith('linux-musl-')) {
+$fixture = Join-Path $scratch 'fixture'
+New-Item -ItemType Directory -Path $fixture | Out-Null
+$legacy = Join-Path $fixture 'pcs_config.json'
+'{"baidu_active_uid":21,"baidu_user_list":[{"uid":21,"name":"Packaged Fixture","workdir":"/fixture","bduss":"synthetic-fixture"}]}' |
+    Set-Content -LiteralPath $legacy
+
+$musl = $Runtime.StartsWith('linux-musl-')
+if ($musl) {
     $image = if ($FrameworkDependent) { 'mcr.microsoft.com/dotnet/runtime:10.0-alpine-extra' }
         else { 'mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine-extra' }
     $mount = "type=bind,source=$output,target=/test,readonly"
-    $actualVersion = docker run --rm --mount $mount $image "/test/$name" --version
-    $help = docker run --rm --mount $mount $image "/test/$name" --help
-} else {
-    $actualVersion = & $executable --version
-    $help = & $executable --help
+    $fixtureMount = "type=bind,source=$fixture,target=/fixture"
+    $legacy = '/fixture/pcs_config.json'
 }
-if (($actualVersion -join '').Trim() -ne $version -or ($help -join "`n") -notmatch '\bdownload\b') {
-    throw "Version or help smoke test failed for $Runtime."
+
+function Invoke-PackagedCli([string[]] $CommandLine) {
+    if ($musl) {
+        docker run --rm --user 0:0 --mount $mount --mount $fixtureMount -e BAIDUPCS_CONFIG_DIR=/fixture/profile $image "/test/$name" @CommandLine
+    } else {
+        & $executable @CommandLine
+    }
+}
+
+$originalProfile = $env:BAIDUPCS_CONFIG_DIR
+try {
+    $env:BAIDUPCS_CONFIG_DIR = Join-Path $fixture 'profile'
+    $actualVersion = Invoke-PackagedCli @('--version')
+    $help = Invoke-PackagedCli @('sync', '--help')
+    Invoke-PackagedCli @('account', 'import-go', $legacy) | Out-Null
+    $accounts = Invoke-PackagedCli @('account', 'ls')
+    $config = (Invoke-PackagedCli @('config', 'show')) | ConvertFrom-Json
+    if (($actualVersion -join '').Trim() -ne $version -or ($help -join "`n") -notmatch '--dry-run\b' -or
+        ($accounts -join "`n") -notmatch 'Packaged Fixture' -or $config.'download-parallel' -lt 1) {
+        throw "Packaged executable smoke test failed for $Runtime."
+    }
+} finally {
+    $env:BAIDUPCS_CONFIG_DIR = $originalProfile
 }
 Write-Host "Verified $executable"
