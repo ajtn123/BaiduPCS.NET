@@ -48,6 +48,38 @@ public sealed class NetdiskClientTests
     }
 
     [Fact]
+    public async Task ImportsASelectedShareFileIntoTheRequestedDirectory()
+    {
+        using var handler = new FixtureHandler(async (request, _, token) =>
+        {
+            Uri uri = request.RequestUri!;
+            if (uri.AbsolutePath == "/s/1fixture")
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"bdstoken\":\"fixture-token\",\"share_uk\":44,\"shareid\":64}"),
+                };
+
+            if (uri.AbsolutePath == "/share/list")
+                return Json(new { list = new[] { new { fs_id = 9, server_filename = "report file.txt" } } });
+
+            Assert.Equal("/share/transfer", uri.AbsolutePath);
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Contains("filename=report%20file.txt", uri.Query);
+            Assert.Contains("shareid=64&from=44", uri.Query);
+            string body = await request.Content!.ReadAsStringAsync(token);
+            Assert.Equal("fsidlist=%5B9%5D&path=%2Fshared+files", body);
+            return Json(new { info = new[] { new { path = "/shared files/report file.txt" } } });
+        });
+        using var client = Client(handler);
+
+        IReadOnlyList<string> saved = await client.ImportShareAsync("https://pan.baidu.com/s/1fixture", null,
+            "/shared files", [9], collect: false, TestContext.Current.CancellationToken);
+
+        Assert.Equal("/shared files/report file.txt", Assert.Single(saved));
+        Assert.Equal(3, handler.Count);
+    }
+
+    [Fact]
     public async Task RefreshesAnExpiredDirectLinkBeforeRetrying()
     {
         int discoveries = 0;
@@ -141,6 +173,23 @@ public sealed class NetdiskClientTests
         using var client = Client(handler);
 
         await Assert.ThrowsAsync<BaiduApiException>(() => client.ClearRecycleBinAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, handler.Count);
+    }
+
+    [Fact]
+    public async Task ClearsOfflineRecordsWithAnAccountWideRequest()
+    {
+        using var handler = new FixtureHandler((request, _) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("pan.baidu.com", request.RequestUri!.Host);
+            Assert.Equal("/rest/2.0/services/cloud_dl", request.RequestUri.AbsolutePath);
+            Assert.Equal("?method=clear_task", request.RequestUri.Query);
+            return Json(new { total = 3 });
+        });
+        using var client = Client(handler);
+
+        Assert.Equal(3, await client.ClearOfflineTasksAsync(TestContext.Current.CancellationToken));
         Assert.Equal(1, handler.Count);
     }
 
@@ -369,6 +418,45 @@ public sealed class NetdiskClientTests
 
         Assert.Equal(1999, entries.Length);
         Assert.Equal(3, handler.Count);
+    }
+
+    [Fact]
+    public async Task FallsBackToPcsWhenPanRejectsTheListingSession()
+    {
+        using var handler = new FixtureHandler((request, count) =>
+        {
+            if (count == 1)
+            {
+                Assert.Equal("/api/list", request.RequestUri!.AbsolutePath);
+                return Json(new { errno = -6 });
+            }
+
+            Assert.Equal("/rest/2.0/pcs/file", request.RequestUri!.AbsolutePath);
+            Assert.Contains("method=list", request.RequestUri.Query);
+            Assert.Contains("path=%2Fdocs", request.RequestUri.Query);
+            Assert.Contains("by=size&order=desc", request.RequestUri.Query);
+            return Json(new { list = new[] { Entry(1, "/docs/report.txt") } });
+        });
+        using var client = Client(handler);
+
+        RemoteEntry[] files = await client.ListAsync("/docs", FileSort.Size, true, TestContext.Current.CancellationToken)
+            .ToArrayAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("/docs/report.txt", Assert.Single(files).Path);
+        Assert.Equal(2, handler.Count);
+    }
+
+    [Fact]
+    public async Task RejectsATruncatedPcsFallbackListingBeforeYieldingFiles()
+    {
+        using var handler = new FixtureHandler((_, count) => count == 1 ? Json(new { errno = -6 }) :
+            Json(new { list = Enumerable.Range(1, 1000).Select(i => Entry(i, $"/docs/{i}.txt")) }));
+        using var client = Client(handler);
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using var entries = client.ListAsync("/docs", cancellationToken: token).GetAsyncEnumerator(token);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => entries.MoveNextAsync().AsTask());
+        Assert.Equal(2, handler.Count);
     }
 
     [Fact]

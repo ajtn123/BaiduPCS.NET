@@ -156,7 +156,9 @@ internal sealed class ListRecycleCommand : RemoteCommand<PageSettings>
         var (_, client) = await OpenAsync(settings, cancellationToken);
         using (client)
         {
-            var table = new Table().AddColumns("File ID", "Path", "Bytes", "Created", "Modified", "MD5", "Remaining time");
+            var table = new Table()
+                .AddColumn(new TableColumn("File ID").NoWrap())
+                .AddColumns("Path", "Bytes", "Created", "Modified", "MD5", "Remaining time");
             foreach (RecycleEntry recycled in await client.ListRecycleBinAsync(settings.Page, cancellationToken))
             {
                 RemoteEntry entry = recycled.Entry;

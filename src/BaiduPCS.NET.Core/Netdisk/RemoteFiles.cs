@@ -45,14 +45,26 @@ public sealed partial class NetdiskClient : IDisposable
     public async IAsyncEnumerable<RemoteEntry> ListAsync(string path, FileSort order = FileSort.Name, bool descending = false,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        string sort = order.ToString().ToLowerInvariant();
         var emitted = new HashSet<long>();
         for (int page = 1; page <= PageLimit; page++)
         {
-            Uri uri = _transport.Pan("list", ("dir", path), ("order", order.ToString().ToLowerInvariant()),
+            Uri uri = _transport.Pan("list", ("dir", path), ("order", sort),
                 ("desc", descending ? "1" : "0"), ("clienttype", "0"),
                 ("num", BaiduTransport.Format(PageSize)), ("page", BaiduTransport.Format(page)));
-            JsonElement root = await _transport.JsonAsync(HttpMethod.Get, uri, "directory listing", true, cancellationToken);
-            RemoteEntry[] entries = ReadEntries(root);
+            RemoteEntry[] entries;
+            try
+            {
+                entries = ReadEntries(await _transport.JsonAsync(HttpMethod.Get, uri, "directory listing", true, cancellationToken));
+            }
+            catch (BaiduApiException error) when (page == 1 && error.Code == -6)
+            {
+                Uri pcs = _transport.Pcs("file", "list", ("path", path), ("by", sort), ("order", descending ? "desc" : "asc"));
+                entries = ReadEntries(await _transport.JsonAsync(HttpMethod.Get, pcs, "PCS directory listing", false, cancellationToken));
+                if (entries.Length >= PageSize)
+                    throw new InvalidDataException("PCS returned its first 1,000 directory entries. Sign in with Pan session cookies to list the entire directory.");
+            }
+
             int newEntries = 0;
             foreach (RemoteEntry entry in entries)
             {

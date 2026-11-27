@@ -31,6 +31,9 @@ jobs:
         run: dotnet build BaiduPCS.NET.slnx --no-restore --configuration Release
       - name: Run offline tests
         run: dotnet test --solution BaiduPCS.NET.slnx --configuration Release --no-build --no-restore
+      - name: Compare one-shot and shell commands
+        shell: pwsh
+        run: ./.github/scripts/test-cli.ps1
       - name: Pack and smoke-test the .NET tool
         if: matrix.runner == 'ubuntu-latest'
         shell: pwsh

@@ -39,6 +39,8 @@ baidupcs export /backup --recursive --root /restored --stdout
 
 Direct download is the default. If it is unavailable for the account or region, try `--mode pcs` or `--mode stream`. `--link-index` is zero-based. `--test` reads the data without creating local output. Verification uses metadata hashes where suitable and always validates transfer length. An existing destination is skipped unless `--overwrite` is set.
 
+Directory listing uses the paged Pan endpoint. When Pan rejects the session, the client can fall back to the older PCS listing used by BaiduPCS-Go 4.0.1. If PCS reaches its 1,000-entry limit, sign in with Pan session cookies for a complete listing.
+
 The default save directory contains a subdirectory named for the active account. Set `download-prefix=` to save directly to the configured directory, or `download-prefix=shared` for a shared subdirectory. Use `download-prefix=@account` to restore the per-account layout. `network-family=prefer-ipv6` tries IPv6 first and falls back to IPv4. `network-family=ipv4` restricts connections to IPv4.
 
 An export manifest is newline-delimited JSON. File records contain `type`, `path`, `length`, `md5`, `sliceMd5`, and `crc32`. Empty directories produce `directory` records. `--format checksum-link` emits the Go-compatible `MD5#sliceMD5#length#name` file records. The Go command's inactive rapid-link import and random-rename switch do not provide an available restore workflow.
@@ -46,3 +48,5 @@ An export manifest is newline-delimited JSON. File records contain `type`, `path
 ## Legacy encrypted files
 
 The nine `aes-128`, `aes-192`, and `aes-256` methods with `ctr`, `cfb`, and `ofb` match the legacy IV-prefixed format. Compression is on by default. Specify the same method, key, and gzip setting on decryption. These modes preserve compatibility and do not authenticate ciphertext. `--remove-source` applies after the output is committed. With `--no-gzip`, the format provides no check that a decryption key was correct.
+
+All nine uncompressed modes passed file comparisons in both directions with BaiduPCS-Go 4.0.1 on Windows. Go reported a temporary-file rename error in its default gzip workflow. The intermediate compressed and decompressed bytes were compatible with .NET.

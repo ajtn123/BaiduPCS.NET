@@ -53,4 +53,4 @@ Downloads probe range support, write disjoint ranges to a partial file, and reco
 
 ## Verification
 
-The fixture suite covers pagination, path matching, remote mutation errors, download signature vectors, expired links, range and part recovery, authentication challenges, archive verification, and legacy AES vectors. Local smoke checks cover build, pack, tool install, shell dispatch, and file encryption. Baidu service behavior still requires authenticated comparison with the upstream command. Run those checks in an isolated profile and a dedicated directory for disposable test files.
+The fixture suite covers pagination, the PCS listing fallback, path matching, remote mutation errors, download signature vectors, expired links, range and part recovery, authentication challenges, archive verification, and legacy AES vectors. CI compares the one-shot CLI and shell with a synthetic profile. Authenticated comparison uses a separate profile and disposable remote files. The README records the account and service limits observed during that comparison.

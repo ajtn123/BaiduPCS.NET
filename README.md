@@ -57,7 +57,11 @@ Use `--help` on a command for all options. For more examples and Go command equi
 
 Build and run the offline fixture tests with `dotnet build` and `dotnet test`. Release archives target Windows x64 and Arm64, macOS x64 and Arm64, and Linux x64 and Arm64 on glibc and musl. Android, iOS, FreeBSD, Linux x86, and MIPS are outside the release matrix. Use the published `SHA256SUMS` to verify an archive.
 
-Baidu can change or retire endpoints and restrict operations by account. Password sign-in, download links, rapid upload, sharing, and offline tasks depend on the currently available service. The fixture tests exercise protocol behavior. Authenticated verification with BaiduPCS-Go is a separate release gate. Standalone rapid-link import was already disabled in the pinned Go command. Checksum links and manifest export remain available for recording file metadata.
+Baidu can change or retire endpoints and restrict operations by account. Assisted verification with BaiduPCS-Go 4.0.1 confirmed profile import, quota, directory and file operations, bidirectional uploads and downloads, share creation and cancellation, and recycle restoration. It also confirmed offline task listing, query, and deletion.
+
+With the tested session, both clients failed to generate Pan web download links or import a share back into its owning account. Direct downloads worked. A repeat offline submission returned service code `36040` in both clients. Go's default upload attempt failed, then succeeded with `--norapid`. The .NET multipart upload succeeded with `--skip-rapid-check`. Sign-in challenges and account-wide clearing were checked with fixtures. Import from another account's share still awaits live verification.
+
+Standalone rapid-link import was disabled in the pinned Go command. Checksum links and manifest export remain available for recording file metadata.
 
 See [Architecture and API design](docs/architecture.md) for the implementation and verification details.
 

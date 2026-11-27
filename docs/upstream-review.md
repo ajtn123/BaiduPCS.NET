@@ -76,7 +76,7 @@ Each row records the decision for the .NET port. A pending live comparison indic
 | [#482](https://github.com/qjfoidnh/BaiduPCS-Go/issues/482) | superdaa | Addressed by `--skip-rapid-check`, which bypasses the UK-based rapid probe. Multipart upload still needs an authorized session. |
 | [#481](https://github.com/qjfoidnh/BaiduPCS-Go/issues/481) | AllIGot2020 | Pending live finalization comparison. Reaching 100% in part progress is separate from the server committing the file. |
 | [#480](https://github.com/qjfoidnh/BaiduPCS-Go/issues/480) | wcjjzz | Pending live comparison. Account identification, directory listing, and share opening are separate requests with different authorization requirements. |
-| [#479](https://github.com/qjfoidnh/BaiduPCS-Go/issues/479) | Lacacy | Pending comparison of the linked upload workaround against the pinned source and live multipart behavior. |
+| [#479](https://github.com/qjfoidnh/BaiduPCS-Go/issues/479) | Lacacy | The linked bypy workaround bypasses rapid and multipart upload. In the live test, Go 4.0.1 succeeded after skipping only the rapid probe, and .NET multipart upload with `--skip-rapid-check` succeeded. [Linked bypy report](https://github.com/houtianze/bypy/issues/741) |
 | [#477](https://github.com/qjfoidnh/BaiduPCS-Go/issues/477) | fgdsfgfdsgdsfgsdfg | The CLI reports the exact remote target after finalization. Pending live listing to confirm the reported missing-file behavior. |
 | [#476](https://github.com/qjfoidnh/BaiduPCS-Go/issues/476) | renmu123 | Implemented `upload --as NAME` for one file. The selected target name is used for validation and finalization. |
 | [#475](https://github.com/qjfoidnh/BaiduPCS-Go/issues/475) | CaoMeiYouRen | Removed commas from the optional upload name restriction. |

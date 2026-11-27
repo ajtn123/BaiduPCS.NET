@@ -115,16 +115,17 @@ public sealed partial class NetdiskClient
         if (selected.Length == 0)
             throw new InvalidOperationException("The share contains no selectable files.");
 
+        string? first = selected.Select(id => items.GetValueOrDefault(id)).FirstOrDefault(name => !string.IsNullOrEmpty(name));
         if (collect && selected.Length > 1)
         {
-            string first = selected.Select(id => items.GetValueOrDefault(id)).FirstOrDefault(name => name is { Length: > 0 }) ?? "";
-            string name = first.Length != 0 && !first.Contains('/') ? first + " and other files" : "Shared files";
+            string name = first is not null && !first.Contains('/') ? first + " and other files" : "Shared files";
             destination = RemotePath.Resolve(destination, name);
             await CreateDirectoryAsync(destination, cancellationToken);
         }
 
         Uri transfer = ShareUrl("transfer", ("app_id", BaiduTransport.PanAppId), ("channel", "chunlei"), ("clienttype", "0"),
-            ("web", "1"), ("shareid", page.ShareId), ("from", page.Owner), ("bdstoken", page.SessionToken));
+            ("web", "1"), ("shareid", page.ShareId), ("from", page.Owner), ("bdstoken", page.SessionToken),
+            ("filename", first ?? "user_specified_file"));
         using var transferForm = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["fsidlist"] = JsonSerializer.Serialize(selected),

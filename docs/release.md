@@ -1,6 +1,6 @@
 # Release
 
-The CI workflow restores locked dependencies and runs the offline tests on Linux, macOS, and Windows. It installs the packed .NET tool from a local feed and builds and runs all eight standalone archives on matching GitHub-hosted runners. The musl checks run the extracted executables inside the .NET Alpine runtime-dependencies image. [Hosted runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+The CI workflow restores locked dependencies, runs the offline tests, and compares one-shot and shell behavior with a synthetic profile on Linux, macOS, and Windows. It installs the packed .NET tool from a local feed and builds and runs all eight standalone archives on matching GitHub-hosted runners. The musl checks run the extracted executables inside the .NET Alpine runtime-dependencies image. [Hosted runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 
 ## Publishing setup
 
