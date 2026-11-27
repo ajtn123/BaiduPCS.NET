@@ -22,7 +22,7 @@ Commands write payloads and results to stdout. Terminal transfers and batch oper
 | --- | --- |
 | `ProfileStore.ReadAsync` and `UpdateAsync` | Read the profile and apply an atomic, locked update to settings or account state |
 | `LegacyProfile.ReadAsync` and `Merge` | Parse the Go profile without opening it for write, then merge accounts by ID and carry over Go settings |
-| `PassportLogin.SignInAsync` and `IPassportPrompts` | Run password sign-in and request user input for CAPTCHA or mobile/email challenges |
+| `PassportLogin.SignInAsync` and `IPassportPrompts` | Legacy password and verification challenge handling. Unsupported for BaiduPCS.NET sign-in. |
 | `AccountIdentity.ResolveAsync` | Resolve the saved session to an account and support the configured manual-name fallback |
 | `NetdiskClient` | List and search using `RemoteEntry`, read metadata and quota, perform file operations, locate links, transfer files, manage shares, query offline tasks, and manage the recycle bin |
 | `FileChecksums.ComputeAsync` and `GetExportChecksumsAsync` | Compute local checksums or read remote export checksums using metadata and range requests |

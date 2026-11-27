@@ -4,7 +4,7 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 
 | BaiduPCS-Go | BaiduPCS.NET | Notes |
 | --- | --- | --- |
-| `login` | `account login` | Password prompts or existing sessions with `--cookies`, `--cookies-stdin`, `--bduss`, or `--bduss-stdin`. BDUSS supports `--ptoken` and `--stoken`. |
+| `login` | `account login` | Use browser cookies with `--cookies` or `--cookies-stdin`, or browser-derived BDUSS with `--bduss` or `--bduss-stdin`. BDUSS sign-in supports optional `--ptoken` and `--stoken`. Password sign-in and its CAPTCHA flow are unsupported. |
 | `loglist`, `who`, `su`, `logout` | `account list`, `account current`, `account switch`, `account logout` | Switch by UID, name, or terminal picker. `logout --yes` confirms removal in scripts. |
 | `setastoken` | `account set-access-token` | Enter the token at the masked prompt or supply `--stdin`. |
 | `quota` | `quota` | Total, used, and free space. |

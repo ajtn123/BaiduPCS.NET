@@ -7,7 +7,7 @@
   <data name="Set one or more key=value options." xml:space="preserve"><value>设置一个或多个 key=value 选项。</value></data>
   <data name="Restore the default client settings." xml:space="preserve"><value>恢复默认客户端设置。</value></data>
   <data name="Manage Baidu accounts." xml:space="preserve"><value>管理百度帐号。</value></data>
-  <data name="Sign in using a password or an existing Baidu session." xml:space="preserve"><value>使用密码或现有百度会话登录。</value></data>
+  <data name="Sign in using Baidu browser cookies or their tokens." xml:space="preserve"><value>使用百度浏览器 Cookie 或其中的令牌登录。</value></data>
   <data name="Import a BaiduPCS-Go profile." xml:space="preserve"><value>导入 BaiduPCS-Go 配置。</value></data>
   <data name="List saved accounts." xml:space="preserve"><value>列出已保存的帐号。</value></data>
   <data name="Show the active account." xml:space="preserve"><value>查看当前帐号。</value></data>

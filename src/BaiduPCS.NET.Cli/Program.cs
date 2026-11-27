@@ -94,7 +94,7 @@ internal static class Program
             config.AddBranch("account", branch =>
             {
                 branch.SetDescription(Ui.Text("Manage Baidu accounts."));
-                completions.Register<LoginCommand>(branch, "account", "login").WithDescription(Ui.Text("Sign in using a password or an existing Baidu session."));
+                completions.Register<LoginCommand>(branch, "account", "login").WithDescription(Ui.Text("Sign in using Baidu browser cookies or their tokens."));
                 completions.Register<ImportAccountCommand>(branch, "account", "import-go").WithDescription(Ui.Text("Import a BaiduPCS-Go profile."));
                 completions.Register<ListAccountsCommand>(branch, "account", "list").WithDescription(Ui.Text("List saved accounts."));
                 completions.Register<CurrentAccountCommand>(branch, "account", "current").WithDescription(Ui.Text("Show the active account."));

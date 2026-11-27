@@ -31,7 +31,7 @@ chmod +x baidupcs
 
 ## Quick start
 
-Put the executable on your PATH to use these examples, or use the relative path shown above. Import an existing BaiduPCS-Go profile with `account import-go`, or run `account login` to sign in interactively.
+Put the executable on your PATH to use these examples, or use the relative path shown above. Import an existing BaiduPCS-Go profile with `account import-go`, or sign in with browser cookies using `account login --cookies-stdin`.
 
 ```sh
 baidupcs account import-go
@@ -40,7 +40,7 @@ baidupcs quota
 baidupcs ls /
 ```
 
-`account import-go` reads the existing profile and writes a separate BaiduPCS.NET profile. Pass the path to `pcs_config.json` for a portable installation. `account login` prompts for the username and password. To pass existing cookies from a credential source, use `account login --cookies-stdin`. BDUSS sign-in also accepts optional PTOKEN and STOKEN.
+`account import-go` reads the existing profile and writes a separate BaiduPCS.NET profile. Pass the path to `pcs_config.json` for a portable installation. Sign-in supports browser cookies or a browser-derived BDUSS with optional PTOKEN and STOKEN. Password sign-in and its CAPTCHA flow are unsupported.
 
 ```sh
 baidupcs mkdir /example
@@ -76,7 +76,7 @@ Transfers in a terminal show a live table with pending, active, and finished fil
 
 Baidu can change or retire endpoints and restrict operations by account. Assisted verification with BaiduPCS-Go 4.0.1 confirmed profile import, quota, directory and file operations, bidirectional uploads and downloads, share creation and cancellation, and recycle restoration. It also confirmed offline task listing, query, and deletion.
 
-With the tested session, both clients failed to generate Pan web download links or import a share back into its owning account. Direct downloads worked. A repeat offline submission returned service code `36040` in both clients. Go's default upload attempt failed, then succeeded with `--norapid`. The .NET multipart upload succeeded with `--skip-rapid-check`. Sign-in challenges and account-wide clearing were checked with fixtures. Import from another account's share still awaits live verification.
+With the tested session, both clients failed to generate Pan web download links or import a share back into its owning account. Direct downloads worked. A repeat offline submission returned service code `36040` in both clients. Go's default upload attempt failed, then succeeded with `--norapid`. The .NET multipart upload succeeded with `--skip-rapid-check`. Account-wide clearing was checked with fixtures. Import from another account's share still awaits live verification.
 
 Standalone rapid-link import was disabled in the pinned Go command. Checksum links and manifest export remain available for recording file metadata.
 
