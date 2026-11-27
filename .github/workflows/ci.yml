@@ -36,7 +36,7 @@ jobs:
         run: ./.github/scripts/test-cli.ps1
 
   standalone:
-    name: Build and test executable (${{ matrix.rid }})
+    name: Build and test executables (${{ matrix.rid }})
     strategy:
       fail-fast: false
       matrix:
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: '10.0.x'
-      - name: Build and smoke-test the executable
+      - name: Build and smoke-test both executable variants
         shell: pwsh
         env:
           RUNTIME: ${{ matrix.rid }}
@@ -65,6 +65,7 @@ jobs:
           $options = @{ Runtime = $env:RUNTIME }
           if ($env:GITHUB_REF_TYPE -eq 'tag') { $options.ReleaseVersion = $env:GITHUB_REF_NAME.Substring(1) }
           & ./.github/scripts/package-standalone.ps1 @options
+          & ./.github/scripts/package-standalone.ps1 @options -FrameworkDependent
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: standalone-${{ matrix.rid }}
@@ -95,19 +96,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           binaries=()
+          self_contained=()
           for rid in win-x64 win-arm64 osx-x64 osx-arm64 linux-x64 linux-arm64 linux-musl-x64 linux-musl-arm64; do
-            name="BaiduPCS.NET-$GITHUB_REF_NAME-$rid"
-            if [[ "$rid" == win-* ]]; then name="$name.exe"; fi
+            base="BaiduPCS.NET-$GITHUB_REF_NAME-$rid"
+            extension=""
+            if [[ "$rid" == win-* ]]; then extension=".exe"; fi
+            name="$base$extension"
+            dependent="$base-framework-dependent$extension"
             test -s "$name"
+            test -s "$dependent"
             test -s "$name.runtime-notices.txt"
-            binaries+=("$name")
+            binaries+=("$name" "$dependent")
+            self_contained+=("$name")
           done
           {
             for notice in ../../LICENSE ../../THIRD-PARTY-NOTICES.md ../../licenses/*.txt; do
               printf '\n=== %s ===\n\n' "${notice#../../}"
               cat "$notice"
             done
-            for name in "${binaries[@]}"; do
+            for name in "${self_contained[@]}"; do
               printf '\n=== .NET runtime notices for %s ===\n\n' "$name"
               cat "$name.runtime-notices.txt"
             done

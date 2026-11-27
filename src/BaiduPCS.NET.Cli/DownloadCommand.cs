@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net;
 using BaiduPCS.Netdisk;
 using BaiduPCS.Transfers;
 using Spectre.Console;
@@ -64,41 +65,56 @@ internal sealed class DownloadCommand : RemoteCommand<DownloadCommand.Settings>
             };
             var failures = new ConcurrentQueue<string>();
             var timer = Stopwatch.StartNew();
+            var display = new OperationDisplay(settings, "File", settings.WorkerStatus);
+            var numbers = new DisplayNumbers(settings.RawNumbers);
             long totalBytes = 0;
-            await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = cancellationToken },
+            await display.RunAsync(() => Parallel.ForEachAsync(files,
+                new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = cancellationToken },
                 async (item, token) =>
                 {
+                    string path = item.Entry.Path;
+                    OperationDisplay.Item row = display.Begin(path, item.Entry.Size);
                     try
                     {
                         if (!settings.Test)
                             DownloadDestination.CreateSafeDirectory(outputRoot, Path.GetDirectoryName(item.Target)!);
 
-                        var report = new TransferProgressReporter(item.Entry.Path, settings.WorkerStatus);
                         bool processed = await client.DownloadAsync(item.Entry, item.Target, options,
-                            settings.WorkerStatus || !Console.IsErrorRedirected
-                                ? progress => report.Report(progress.CompletedBytes, progress.TotalBytes, progress.Range) : null, token);
+                            display.TrackProgress ? progress => display.Report(row, progress.CompletedBytes,
+                                progress.TotalBytes, progress.Range, progress.Resumed) : null, token);
                         if (processed)
                             Interlocked.Add(ref totalBytes, item.Entry.Size);
 
-                        Console.WriteLine($"{(processed ? settings.Test ? "Tested" : "Downloaded" : "Skipped")} {item.Entry.Path}");
+                        string result = processed ? settings.Test ? "Tested" : "Downloaded" : "Skipped";
+                        display.End(row, result, plain: $"{result} {path}");
                     }
                     catch (Exception error) when (error is IOException or InvalidDataException or HttpRequestException or BaiduApiException
                         or UnauthorizedAccessException or InvalidOperationException || error is OperationCanceledException && !token.IsCancellationRequested)
                     {
-                        failures.Enqueue(item.Entry.Path);
-                        string message = error is BaiduApiException or InvalidDataException or InvalidOperationException
-                            ? error.Message : error.GetType().Name;
-                        Console.Error.WriteLine($"{item.Entry.Path}: {message}");
+                        failures.Enqueue(path);
+                        string failure = DescribeFailure(error);
+                        display.End(row, failure, failed: true, plain: $"{path}: {failure}");
                     }
-                });
+                }));
 
-            Console.WriteLine($"Processed {totalBytes} bytes in {timer.Elapsed.TotalSeconds:F1}s.");
-            if (!failures.IsEmpty)
+            Console.WriteLine($"Processed {numbers.Bytes(totalBytes)} in {numbers.Duration(timer.Elapsed.TotalSeconds)}.");
+            if (!failures.IsEmpty && !display.IsInteractive)
                 Console.Error.WriteLine($"Failed downloads ({failures.Count}): {string.Join(", ", failures)}");
 
             return failures.IsEmpty ? 0 : 1;
         }
     }
+
+    internal static string DescribeFailure(Exception error) => error switch
+    {
+        BaiduApiException { Status: HttpStatusCode.Forbidden, Code: not 0 } denied =>
+            $"Download request returned HTTP 403 (Forbidden), Baidu error {denied.Code}.",
+        HttpRequestException { StatusCode: { } status } => $"Download request returned HTTP {(int)status} ({status}).",
+        HttpRequestException request => $"Download request failed ({request.HttpRequestError}).",
+        OperationCanceledException => "The download request timed out.",
+        BaiduApiException or InvalidDataException or InvalidOperationException or EndOfStreamException => error.Message,
+        _ => error.GetType().Name,
+    };
 
     private static async Task<IReadOnlyCollection<DownloadItem>> PlanDownloadsAsync(NetdiskClient client, string[] sources,
         string outputRoot, bool fullPath, CancellationToken token)

@@ -62,7 +62,13 @@ internal sealed class ApplyUpdateCommand : AsyncCommand<ApplyUpdateCommand.Setti
         }
 
         string executable = Environment.ProcessPath ?? throw new InvalidOperationException("Could not identify the running application.");
-        string staged = await updater.StageStandaloneAsync(release, RuntimeInformation.RuntimeIdentifier, executable, cancellationToken);
+#if BAIDUPCS_FRAMEWORK_DEPENDENT
+        const bool frameworkDependent = true;
+#else
+        const bool frameworkDependent = false;
+#endif
+        string staged = await updater.StageStandaloneAsync(release, RuntimeInformation.RuntimeIdentifier, executable,
+            cancellationToken, frameworkDependent: frameworkDependent);
         if (OperatingSystem.IsWindows())
         {
             StartWindowsHelper(staged, executable);

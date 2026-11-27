@@ -18,7 +18,8 @@ public sealed partial class NetdiskClient
     {
         Uri uri = _transport.Pcs("file", "locatedownload", [("path", path), ("app_id", BaiduTransport.PanAppId),
             ("ant", "1"), ("check_blue", "1"), ("es", "1"), ("esl", "1"), ("ver", "4.0"), ("clienttype", "17"),
-            ("channel", "0"), ("apn_id", "1_0"), ("freeisp", "0"), ("queryfree", "0"), ("use", "0"), .. SignedParameters()]);
+            ("channel", "0"), ("apn_id", "1_0"), ("freeisp", "0"), ("queryfree", "0"), ("use", "0")]);
+        uri = new UriBuilder(uri) { Query = uri.Query[1..] + "&" + BaiduTransport.EncodeQuery(SignedParameters()) }.Uri;
         JsonElement root = await _transport.JsonAsync(HttpMethod.Post, uri, "direct download links", true, cancellationToken);
         var links = new List<Uri>();
         foreach (JsonElement item in root.Items("urls"))

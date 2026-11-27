@@ -8,13 +8,13 @@
 | `BaiduPCS.NET.Core` | Profile state, Baidu requests, remote paths, transfer workers, checksums, legacy file encryption, and release staging |
 | `BaiduPCS.NET.Tests` | Fixture requests and responses, transfer interruption and failure tests, cryptography vectors, archive checks, and CLI parsing and localization tests |
 
-The release artifact is a self-contained executable for each supported runtime. `BaiduPCS.NET.Core` is built into it and exposes typed APIs inside the solution.
+Each supported runtime has two single-file executables, one self-contained and one framework-dependent. `BaiduPCS.NET.Core` is built into both and exposes typed APIs inside the solution.
 
 ## Command execution
 
 The one-shot CLI and the shell pass the same argument arrays to the Spectre command app. Settings types parse options and validate local input before a service call. The shell uses the same registration data for command completion and queries the active account for remote path completion. Its history excludes commands that directly carry passwords, keys, cookies, access tokens, or sharing codes.
 
-Commands write payloads and results to stdout. Progress and errors go to stderr. Exit codes are `0` for success, `1` for operation or batch failure, `2` for invalid input, and `130` for interruption. `run` propagates the child process exit code. The first interrupt cancels scheduling and lets completed transfer ranges or parts be recorded. A second interrupt allows immediate process termination.
+Commands write payloads and results to stdout. Terminal transfers and batch operations show a live table and a final results table. When redirected, commands print line output, errors go to stderr, and explicitly requested progress goes to stderr. Exit codes are `0` for success, `1` for operation or batch failure, `2` for invalid input, and `130` for interruption. `run` propagates the child process exit code. The first interrupt cancels scheduling and lets completed transfer ranges or parts be recorded. A second interrupt allows immediate process termination.
 
 ## Core API
 

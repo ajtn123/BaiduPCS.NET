@@ -61,21 +61,28 @@ internal abstract class ToolCryptoCommand(bool decrypt) : AsyncCommand<ToolCrypt
 
         byte[] key = Encoding.UTF8.GetBytes(secret);
         int status = 0;
+        var display = new OperationDisplay(settings, "File");
         try
         {
-            foreach (string file in settings.Files)
+            await display.RunAsync(async () =>
             {
-                try
+                foreach (string file in settings.Files)
                 {
-                    string output = await TransformAsync(file, settings, key, cancellationToken);
-                    Console.WriteLine(output);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var row = display.Begin(file);
+                    try
+                    {
+                        string output = await TransformAsync(file, settings, key, cancellationToken);
+                        display.End(row, output, plain: output);
+                    }
+                    catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or CryptographicException)
+                    {
+                        string failure = error is InvalidDataException ? "Invalid encrypted or gzip data." : error.Message;
+                        display.End(row, failure, failed: true, plain: $"{file}: {failure}");
+                        status = 1;
+                    }
                 }
-                catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or CryptographicException)
-                {
-                    Console.Error.WriteLine($"{file}: {(error is InvalidDataException ? "Invalid encrypted or gzip data." : error.Message)}");
-                    status = 1;
-                }
-            }
+            });
 
             return status;
         }

@@ -21,6 +21,7 @@ internal sealed class BaiduTransport : IDisposable
     internal const string PcsHost = "pcs.baidu.com";
     internal const string PanAppId = "250528";
     private readonly HttpClient _http;
+    private readonly Lazy<HttpClient>? _downloads;
     private readonly ClientSettings _settings;
     private string Scheme => _settings.UseHttps ? "https" : "http";
 
@@ -28,11 +29,15 @@ internal sealed class BaiduTransport : IDisposable
         bool allowRedirects = true)
     {
         _settings = settings;
-        _http = new HttpClient(handler ?? CreateHandler(settings, credentials, Cookies, allowRedirects))
+        if (handler is null)
         {
-            Timeout = TimeSpan.FromSeconds(100),
-        };
+            LoadCookies(credentials, Cookies);
+            _downloads = new(() => CreateClient(CreateHandler(settings, Cookies, allowRedirects, DecompressionMethods.None)));
+        }
+        _http = CreateClient(handler ?? CreateHandler(settings, Cookies, allowRedirects, DecompressionMethods.GZip));
     }
+
+    private static HttpClient CreateClient(HttpMessageHandler handler) => new(handler) { Timeout = TimeSpan.FromSeconds(100) };
 
     internal CookieContainer Cookies { get; } = new();
 
@@ -47,10 +52,12 @@ internal sealed class BaiduTransport : IDisposable
     internal Uri PanPage(string path) => Build("https", PanHost, path);
 
     internal static Uri Build(string scheme, string host, string path, params (string Key, string Value)[] query) =>
-        new UriBuilder(scheme, host) { Path = path, Query = EncodeQuery(query) }.Uri;
+        new UriBuilder(scheme, host) { Path = path, Query = EncodeQuery(query.OrderBy(pair => pair.Key, StringComparer.Ordinal)) }.Uri;
 
     internal static string EncodeQuery(IEnumerable<(string Key, string Value)> query) => string.Join('&', query
-        .Select(pair => $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
+        .Select(pair => $"{EscapeQueryValue(pair.Key)}={EscapeQueryValue(pair.Value)}"));
+
+    private static string EscapeQueryValue(string value) => Uri.EscapeDataString(value).Replace("%20", "+", StringComparison.Ordinal);
 
     internal static string Format(long number) => number.ToString(CultureInfo.InvariantCulture);
 
@@ -119,17 +126,25 @@ internal sealed class BaiduTransport : IDisposable
     }
 
     internal async Task<HttpResponseMessage> SendAsync(HttpMethod method, Uri uri, bool pan,
-        CancellationToken cancellationToken, HttpContent? content = null, Action<HttpRequestMessage>? configure = null)
+        CancellationToken cancellationToken, HttpContent? content = null, Action<HttpRequestMessage>? configure = null,
+        bool rawDownload = false)
     {
         string agent = pan ? _settings.PanUserAgent : _settings.PcsUserAgent;
-        if (string.IsNullOrEmpty(agent))
+        if (string.IsNullOrEmpty(agent) && !uri.AbsolutePath.StartsWith("/rest/2.0/pcs/", StringComparison.Ordinal))
             agent = _settings.UserAgent;
 
         using var request = new HttpRequestMessage(method, uri) { Content = content };
+        if (uri.Scheme == Uri.UriSchemeHttps)
+            request.Version = HttpVersion.Version20;
         AddCdnCookies(uri);
-        request.Headers.TryAddWithoutValidation("User-Agent", agent);
+        if (agent.Length != 0)
+            request.Headers.TryAddWithoutValidation("User-Agent", agent);
         configure?.Invoke(request);
-        return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        HttpClient client = rawDownload && _downloads is not null ? _downloads.Value : _http;
+        using var headersTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (content is null)
+            headersTimeout.CancelAfter(TimeSpan.FromSeconds(25));
+        return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headersTimeout.Token);
     }
 
     private void AddCdnCookies(Uri uri)
@@ -152,8 +167,7 @@ internal sealed class BaiduTransport : IDisposable
         return content;
     }
 
-    private static SocketsHttpHandler CreateHandler(ClientSettings settings, Credentials credentials, CookieContainer cookies,
-        bool allowRedirects)
+    private static void LoadCookies(Credentials credentials, CookieContainer cookies)
     {
         var combined = ParseCookies(credentials.Cookies);
         AddCookie(combined, "BDUSS", credentials.Bduss);
@@ -170,15 +184,21 @@ internal sealed class BaiduTransport : IDisposable
         {
             throw new ArgumentException("The saved Baidu cookies contain an invalid name or value.");
         }
+    }
 
+    private static SocketsHttpHandler CreateHandler(ClientSettings settings, CookieContainer cookies,
+        bool allowRedirects, DecompressionMethods decompression)
+    {
         var handler = new SocketsHttpHandler
         {
             CookieContainer = cookies,
             AllowAutoRedirect = allowRedirects,
-            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli,
+            AutomaticDecompression = decompression,
             MaxAutomaticRedirections = 10,
             ConnectTimeout = TimeSpan.FromSeconds(30),
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            PooledConnectionIdleTimeout = TimeSpan.FromSeconds(90),
+            Expect100ContinueTimeout = TimeSpan.FromSeconds(10),
         };
         if (!string.IsNullOrWhiteSpace(settings.Proxy))
             handler.Proxy = new ScopedProxy(settings.Proxy, settings.ProxyHosts);
@@ -254,7 +274,12 @@ internal sealed class BaiduTransport : IDisposable
             cookies[name] = value;
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        if (_downloads is { IsValueCreated: true })
+            _downloads.Value.Dispose();
+        _http.Dispose();
+    }
 
     private sealed class ScopedProxy : IWebProxy
     {

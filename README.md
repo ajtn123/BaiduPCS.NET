@@ -7,7 +7,7 @@ BaiduPCS.NET is a .NET 10 command-line client for Baidu Netdisk. It ports BaiduP
 
 ## Download
 
-Choose the executable for your system. Each executable includes the .NET runtime. Check its SHA-256 against the release's `SHA256SUMS`. [Latest release](https://github.com/ajtn123/BaiduPCS.NET/releases/latest)
+Choose the executable for your system. Releases provide both self-contained and framework-dependent single files. Assets with `-framework-dependent` in the filename use an installed .NET 10 runtime or roll forward to a newer compatible runtime. Self-contained assets include .NET. Check the executable's SHA-256 against the release's `SHA256SUMS`. [Latest release](https://github.com/ajtn123/BaiduPCS.NET/releases/latest)
 
 | System | Asset suffixes |
 | --- | --- |
@@ -65,6 +65,8 @@ Run `baidupcs` in a terminal to enter the shell. Use `help`, Tab completion, and
 | Check for updates | `update check`, `update apply` |
 
 Use `ls` or `ll` for `list`, `d` for `download`, and `u` for `upload`. `cd` changes the remote working directory. These names work in the interactive shell and in one-shot commands. For all options and aliases, see [Command reference and migration](docs/commands.md).
+
+Transfers in a terminal show a live table with one progress bar per active file. Speed averages the preceding minute and drives the ETA. Use `--raw-numbers` for exact byte counts and durations in seconds.
 
 ## Configuration
 

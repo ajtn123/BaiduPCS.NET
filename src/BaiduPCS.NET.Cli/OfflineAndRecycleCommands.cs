@@ -53,7 +53,7 @@ internal sealed class AddOfflineCommand : RemoteCommand<AddOfflineCommand.Settin
         {
             string destination = await client.MatchOneAsync(account.WorkingDirectory, settings.Path, cancellationToken);
             var tasks = new List<(int Index, long Id)>();
-            int result = await ExecuteEachAsync(settings.Sources.Select((source, index) => (Source: source, Index: index + 1)),
+            int result = await ExecuteEachAsync(settings, settings.Sources.Select((source, index) => (Source: source, Index: index + 1)),
                 item => $"Source {item.Index}", async item => tasks.Add((item.Index,
                     await client.AddOfflineTaskAsync(item.Source, destination, cancellationToken))), cancellationToken);
             foreach (var task in tasks)
@@ -70,7 +70,7 @@ internal sealed class ListOfflineCommand : RemoteCommand<PageSettings>
     {
         var (_, client) = await OpenAsync(settings, cancellationToken);
         using (client)
-            OfflineOutput.Write(await client.ListOfflineTasksAsync(settings.Page, cancellationToken));
+            OfflineOutput.Write(await client.ListOfflineTasksAsync(settings.Page, cancellationToken), settings.RawNumbers);
         return 0;
     }
 }
@@ -83,11 +83,12 @@ internal sealed class QueryOfflineCommand : RemoteCommand<IdSettings>
         using (client)
         {
             IReadOnlyList<OfflineTask> tasks = await client.QueryOfflineTasksAsync(settings.Ids, cancellationToken);
-            OfflineOutput.Write(tasks);
+            OfflineOutput.Write(tasks, settings.RawNumbers);
+            var numbers = new DisplayNumbers(settings.RawNumbers);
             foreach (OfflineTask task in tasks.Where(task => task.Result == 0))
             {
                 foreach (OfflineFile file in task.Files)
-                    Console.WriteLine($"{task.Id}\t{file.Size}\t{file.Name}");
+                    Console.WriteLine($"{task.Id}\t{numbers.Bytes(file.Size, unit: false)}\t{file.Name}");
             }
 
             return tasks.All(task => task.Result == 0) ? 0 : 1;
@@ -101,7 +102,7 @@ internal sealed class CancelOfflineCommand : RemoteCommand<IdSettings>
     {
         var (_, client) = await OpenAsync(settings, cancellationToken);
         using (client)
-            return await ExecuteEachAsync(settings.Ids.Distinct(), id => $"Task {id}",
+            return await ExecuteEachAsync(settings, settings.Ids.Distinct(), id => $"Task {id}",
                 id => client.CancelOfflineTaskAsync(id, cancellationToken), cancellationToken);
     }
 }
@@ -126,7 +127,7 @@ internal abstract class DeleteByIdCommand : RemoteCommand<DeleteIdSettings>
         using (client)
         {
             if (!settings.All)
-                return await ExecuteEachAsync(settings.Ids.Distinct(), id => $"Deleted {id}",
+                return await ExecuteEachAsync(settings, settings.Ids.Distinct(), id => $"Deleted {id}",
                     id => DeleteAsync(client, id, cancellationToken), cancellationToken);
 
             Console.WriteLine($"Deleted {await ClearAsync(client, cancellationToken)} entries.");
@@ -156,14 +157,15 @@ internal sealed class ListRecycleCommand : RemoteCommand<PageSettings>
         var (_, client) = await OpenAsync(settings, cancellationToken);
         using (client)
         {
+            var numbers = new DisplayNumbers(settings.RawNumbers);
             var table = new Table()
                 .AddColumn(new TableColumn("File ID").NoWrap())
-                .AddColumns("Path", "Bytes", "Created", "Modified", "MD5", "Remaining time");
+                .AddColumns("Path", settings.RawNumbers ? "Bytes" : "Size", "Created", "Modified", "MD5", "Remaining time");
             foreach (RecycleEntry recycled in await client.ListRecycleBinAsync(settings.Page, cancellationToken))
             {
                 RemoteEntry entry = recycled.Entry;
                 table.AddRow(entry.Id.ToString(CultureInfo.InvariantCulture), Markup.Escape(entry.Path + (entry.IsDirectory ? "/" : "")),
-                    entry.IsDirectory ? "-" : entry.Size.ToString(CultureInfo.InvariantCulture),
+                    entry.IsDirectory ? "-" : numbers.Bytes(entry.Size, unit: false),
                     entry.Created.ToString("u", CultureInfo.InvariantCulture), entry.Modified.ToString("u", CultureInfo.InvariantCulture),
                     Markup.Escape(entry.Md5), recycled.RemainingTime.ToString(CultureInfo.InvariantCulture));
             }
@@ -181,7 +183,7 @@ internal sealed class RestoreRecycleCommand : RemoteCommand<IdSettings>
     {
         var (_, client) = await OpenAsync(settings, cancellationToken);
         using (client)
-            return await ExecuteEachAsync(settings.Ids.Distinct(), id => $"File {id}", async id =>
+            return await ExecuteEachAsync(settings, settings.Ids.Distinct(), id => $"File {id}", async id =>
             {
                 if (!await client.RestoreRecycleEntryAsync(id, cancellationToken))
                     throw new InvalidDataException("Baidu did not confirm this restore.");
@@ -191,13 +193,15 @@ internal sealed class RestoreRecycleCommand : RemoteCommand<IdSettings>
 
 internal static class OfflineOutput
 {
-    internal static void Write(IEnumerable<OfflineTask> tasks)
+    internal static void Write(IEnumerable<OfflineTask> tasks, bool raw)
     {
         var table = new Table().AddColumns("Task ID", "Name", "Destination", "Source", "Progress", "Created", "Status");
+        var numbers = new DisplayNumbers(raw);
         foreach (OfflineTask task in tasks)
         {
             table.AddRow(task.Id.ToString(CultureInfo.InvariantCulture), Markup.Escape(task.Name), Markup.Escape(task.Destination),
-                Markup.Escape(task.Source), $"{task.CompletedBytes}/{task.Size}", task.Created.ToString("u", CultureInfo.InvariantCulture),
+                Markup.Escape(task.Source), $"{numbers.Bytes(task.CompletedBytes, unit: false)}/{numbers.Bytes(task.Size, unit: false)}",
+                task.Created.ToString("u", CultureInfo.InvariantCulture),
                 task.Result != 0 ? "Task not found" : Status(task.Status));
         }
         AnsiConsole.Write(table);

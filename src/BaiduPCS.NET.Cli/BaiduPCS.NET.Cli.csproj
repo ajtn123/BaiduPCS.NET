@@ -4,11 +4,13 @@
     <RootNamespace>BaiduPCS.Cli</RootNamespace>
     <AssemblyName>baidupcs</AssemblyName>
     <IsPackable>false</IsPackable>
-    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionPrefix>1.1.0</VersionPrefix>
     <VersionSuffix>dev</VersionSuffix>
     <Description>A command-line client for Baidu Netdisk.</Description>
     <RepositoryUrl>https://github.com/ajtn123/BaiduPCS.NET</RepositoryUrl>
     <DefineConstants Condition="'$(PublishSingleFile)' == 'true'">$(DefineConstants);BAIDUPCS_STANDALONE</DefineConstants>
+    <DefineConstants Condition="'$(PublishSingleFile)' == 'true' And '$(SelfContained)' == 'false'">$(DefineConstants);BAIDUPCS_FRAMEWORK_DEPENDENT</DefineConstants>
+    <RollForward>Major</RollForward>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Spectre.Console.Cli" Version="0.57.2" />

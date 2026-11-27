@@ -52,20 +52,23 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
             }
 
             var timer = Stopwatch.StartNew();
+            var display = new OperationDisplay(settings, "File", settings.Verbose);
+            var numbers = new DisplayNumbers(settings.RawNumbers);
             long totalBytes = 0;
+            int failed = 0;
             var parallel = new ParallelOptions
             {
                 MaxDegreeOfParallelism = settings.FileConcurrency ?? profile.Settings.UploadConcurrency,
                 CancellationToken = cancellationToken,
             };
-            await Parallel.ForEachAsync(files, parallel, async (item, token) =>
+            await display.RunAsync(() => Parallel.ForEachAsync(files, parallel, async (item, token) =>
             {
+                OperationDisplay.Item row = display.Begin(item.Target, item.File.Length);
                 try
                 {
-                    var report = new TransferProgressReporter(item.Target, settings.Verbose);
                     UploadResult result = await client.UploadAsync(item.File.FullName, item.Target, checkpoints, options,
-                        settings.Verbose || !Console.IsErrorRedirected
-                            ? progress => report.Report(progress.CompletedBytes, progress.TotalBytes, progress.Part) : null, token);
+                        display.TrackProgress ? progress => display.Report(row, progress.CompletedBytes,
+                            progress.TotalBytes, progress.Part, resumed: progress.Part < 0) : null, token);
                     if (result != UploadResult.Skipped)
                         Interlocked.Add(ref totalBytes, item.File.Length);
 
@@ -75,7 +78,7 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                         UploadResult.Skipped => "Skipped",
                         _ => "Uploaded",
                     };
-                    Console.WriteLine($"{label} {item.Target}");
+                    display.End(row, label, plain: $"{label} {item.Target}");
                 }
                 catch (Exception error) when (error is IOException or InvalidDataException or HttpRequestException or BaiduApiException
                     or UnauthorizedAccessException or ArgumentException or InvalidOperationException
@@ -83,15 +86,16 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                 {
                     string message = error is BaiduApiException or InvalidDataException or ArgumentException or InvalidOperationException
                         ? error.Message : error.GetType().Name;
-                    failures.Enqueue($"{item.Target}: {message}");
+                    Interlocked.Increment(ref failed);
+                    display.End(row, message, failed: true, plain: $"{item.Target}: {message}");
                 }
-            });
+            }));
 
-            Console.WriteLine($"Processed {totalBytes} bytes in {timer.Elapsed.TotalSeconds:F1}s.");
+            Console.WriteLine($"Processed {numbers.Bytes(totalBytes)} in {numbers.Duration(timer.Elapsed.TotalSeconds)}.");
             foreach (string failure in failures)
                 Console.Error.WriteLine(failure);
 
-            return failures.IsEmpty ? 0 : 1;
+            return failures.IsEmpty && failed == 0 ? 0 : 1;
         }
     }
 
