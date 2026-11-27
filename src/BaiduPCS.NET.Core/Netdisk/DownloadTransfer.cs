@@ -262,8 +262,8 @@ public sealed partial class NetdiskClient
     {
         HttpResponseMessage response = await _transport.SendAsync(HttpMethod.Get, uri, mode == DownloadMode.Direct, token, configure: request =>
         {
-            // The Go client omits User-Agent on PCS and stream downloads when no PCS agent is configured.
-            if (mode != DownloadMode.Direct && _settings.PcsUserAgent.Length == 0)
+            string agent = mode == DownloadMode.Direct ? _settings.PanUserAgent : _settings.PcsUserAgent;
+            if (agent.Length == 0)
                 request.Headers.Remove("User-Agent");
             if (from.HasValue)
                 request.Headers.Range = new RangeHeaderValue(from, to);
