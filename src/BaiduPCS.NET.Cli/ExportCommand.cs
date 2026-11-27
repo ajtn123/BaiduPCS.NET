@@ -36,20 +36,26 @@ internal sealed class ExportCommand : RemoteCommand<ExportCommand.Settings>
         {
             string[] sources = await ExpandAsync(client, account, settings.Paths.Length == 0 ? ["."] : settings.Paths, cancellationToken);
             if (settings.StandardOutput)
-                return await ExportAsync(client, account, sources, settings, Console.Out, cancellationToken);
+                return await ExportAsync(client, account, sources, settings, Console.Out, null, cancellationToken);
 
             DateTimeOffset time = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8));
             string output = settings.Output ?? "BaiduPCS.NET_export_" + time.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)
                 + (settings.Format == "manifest" ? ".jsonl" : ".txt");
             await using var stream = new StreamWriter(output, append: true);
-            int status = await ExportAsync(client, account, sources, settings, stream, cancellationToken);
+            var display = new OperationDisplay(settings, "File");
+            int status = 0;
+            await display.RunAsync(async () =>
+            {
+                status = await ExportAsync(client, account, sources, settings, stream, display, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            });
             Console.Error.WriteLine($"Export written to {Path.GetFullPath(output)}");
             return status;
         }
     }
 
     private static async Task<int> ExportAsync(NetdiskClient client, Account account, string[] sources, Settings settings,
-        TextWriter output, CancellationToken token)
+        TextWriter output, OperationDisplay? display, CancellationToken token)
     {
         var written = new Dictionary<string, string>(StringComparer.Ordinal);
         int failures = 0;
@@ -127,13 +133,14 @@ internal sealed class ExportCommand : RemoteCommand<ExportCommand.Settings>
                 return;
 
             FileChecksums checksums;
+            OperationDisplay.Item? row = display?.Begin(entry.Path);
             try
             {
                 checksums = await client.GetExportChecksumsAsync(entry, settings.Retries, token);
             }
             catch (Exception error) when (IsRemoteFailure(error) || error is ArgumentException)
             {
-                ReportFailure(entry.Path, error);
+                ReportFailure(entry.Path, error, row);
                 return;
             }
 
@@ -141,6 +148,8 @@ internal sealed class ExportCommand : RemoteCommand<ExportCommand.Settings>
                 : JsonSerializer.Serialize(new { type = "file", path, checksums.Length, checksums.Md5, checksums.SliceMd5, checksums.Crc32 }, Json);
             await output.WriteLineAsync(record.AsMemory(), token);
             written.Add(path, entry.Path);
+            if (row is not null)
+                display!.End(row, "Exported");
         }
 
         bool CanWrite(string source, string path)
@@ -152,11 +161,15 @@ internal sealed class ExportCommand : RemoteCommand<ExportCommand.Settings>
             return false;
         }
 
-        void ReportFailure(string path, Exception error)
+        void ReportFailure(string path, Exception error, OperationDisplay.Item? row = null)
         {
             failures++;
             string message = error is HttpRequestException ? "Baidu request failed." : error.Message;
-            Console.Error.WriteLine($"Export {path}: {message}");
+            string plain = $"Export {path}: {message}";
+            if (display is null)
+                Console.Error.WriteLine(plain);
+            else
+                display.End(row ?? display.Begin(path), message, failed: true, plain: plain);
         }
 
         bool IsRemoteFailure(Exception error) => error is BaiduApiException or HttpRequestException or InvalidDataException or EndOfStreamException
