@@ -4,7 +4,7 @@ using BaiduPCS.Netdisk;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
-namespace BaiduPCS.Cli;
+namespace BaiduPCS.Cli.Commands;
 
 internal sealed class LoginCommand : ProfileCommand<LoginCommand.Settings>
 {

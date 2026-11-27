@@ -5,7 +5,7 @@ using BaiduPCS.Transfers;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
-namespace BaiduPCS.Cli;
+namespace BaiduPCS.Cli.Commands;
 
 internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
 {
@@ -167,7 +167,10 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
     {
         var items = new Dictionary<string, UploadItem>(StringComparer.Ordinal);
         var ancestors = new HashSet<string>(LocalPathComparer);
-        foreach (string path in paths)
+        string[] sources = paths.SelectMany(path => ExpandLocalPaths(path, token)).ToArray();
+        if (remoteName is not null && sources.Length != 1)
+            throw new ArgumentException("--as requires exactly one matching local file.");
+        foreach (string path in sources)
         {
             string fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
             FileSystemInfo entry = Directory.Exists(fullPath) ? new DirectoryInfo(fullPath) : new FileInfo(fullPath);
@@ -229,6 +232,47 @@ internal sealed class UploadCommand : RemoteCommand<UploadCommand.Settings>
                 failures.Enqueue($"{entry.FullName}: {error.GetType().Name}");
             }
         }
+    }
+
+    internal static IEnumerable<string> ExpandLocalPaths(string path, CancellationToken token)
+    {
+        if (Path.Exists(path))
+            return [path];
+
+        string root = Path.GetPathRoot(path) ?? "";
+        string[] segments = path[root.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+        if (!segments.Any(GlobSegment.IsPattern))
+            return [path];
+
+        var paths = new List<string> { Path.GetFullPath(root.Length == 0 ? "." : root) };
+        for (int index = 0; index < segments.Length; index++)
+        {
+            token.ThrowIfCancellationRequested();
+            string segment = segments[index];
+            if (!GlobSegment.IsPattern(segment))
+            {
+                paths = paths.Select(parent => Path.Combine(parent, segment)).Where(Path.Exists).ToList();
+                continue;
+            }
+
+            var matcher = new GlobSegment(segment, ignoreCase: OperatingSystem.IsWindows());
+            var matches = new List<string>();
+            foreach (string parent in paths.Where(Directory.Exists))
+            {
+                foreach (FileSystemInfo entry in new DirectoryInfo(parent).EnumerateFileSystemInfos())
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (matcher.Matches(entry.Name) && (index == segments.Length - 1 || entry is DirectoryInfo))
+                        matches.Add(entry.FullName);
+                }
+            }
+            paths = matches;
+        }
+
+        if (paths.Count == 0)
+            throw new ArgumentException($"The local pattern '{path}' matched no paths.");
+        return paths;
     }
 
     private static StringComparer LocalPathComparer => OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()

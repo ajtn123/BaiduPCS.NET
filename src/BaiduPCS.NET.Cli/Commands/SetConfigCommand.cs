@@ -1,38 +1,9 @@
 using System.Globalization;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using BaiduPCS.Configuration;
 using Spectre.Console.Cli;
 
-namespace BaiduPCS.Cli;
-
-internal sealed class ShowConfigCommand : ProfileCommand<CommonSettings>
-{
-    private static readonly JsonSerializerOptions Output = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.KebabCaseLower,
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter<UploadConflict>(JsonNamingPolicy.KebabCaseLower),
-            new JsonStringEnumConverter<NetworkFamily>(JsonNamingPolicy.KebabCaseLower) },
-    };
-
-    public override async Task<int> ExecuteAsync(CommandContext context, CommonSettings settings, CancellationToken cancellationToken)
-    {
-        ClientSettings current = (await Store.ReadAsync(cancellationToken)).Settings;
-        Console.WriteLine(JsonSerializer.Serialize(current with { Proxy = current.Proxy.Length == 0 ? "" : "[configured]" }, Output));
-        return 0;
-    }
-}
-
-internal sealed class ResetConfigCommand : ProfileCommand<CommonSettings>
-{
-    public override async Task<int> ExecuteAsync(CommandContext context, CommonSettings settings, CancellationToken cancellationToken)
-    {
-        await Store.UpdateAsync(profile => profile.Settings = new(), cancellationToken);
-        return 0;
-    }
-}
+namespace BaiduPCS.Cli.Commands;
 
 internal sealed partial class SetConfigCommand : ProfileCommand<SetConfigCommand.Settings>
 {

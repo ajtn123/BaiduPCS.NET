@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
@@ -8,14 +7,13 @@ namespace BaiduPCS.Cli;
 internal sealed class OperationDisplay(CommonSettings settings, string itemHeading, bool showWorker = false, IAnsiConsole? console = null)
 {
     private readonly IAnsiConsole? _console = console ?? GetInteractiveConsole();
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly List<Item> _items = [];
     private readonly LinkedList<Item> _pending = new();
     private readonly List<Item> _active = [];
     private readonly List<Item> _finished = [];
     private readonly DisplayNumbers _numbers = new(settings.RawNumbers);
     private bool _hasTransfers;
-    private int _rawTransferWidth = 29;
 
     internal async Task RunAsync(Func<Task> action)
     {
@@ -47,7 +45,7 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
             if (_finished.Count != 0)
             {
                 var table = CreateTable().AddColumns(itemHeading, "Result");
-                foreach (Item row in Enumerable.Reverse(_items).Where(item => item.Result is not null))
+                foreach (Item row in _items.Where(item => item.Result is not null))
                 {
                     string result = Markup.Escape(row.Result!);
                     table.AddRow(new Text(row.Name), new Markup(row.Failed ? $"[red]{result}[/]" : result));
@@ -67,11 +65,6 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
                 _items.Add(item);
                 item.Pending = _pending.AddLast(item);
                 _hasTransfers |= total.HasValue;
-                if (settings.RawNumbers && total is long length)
-                {
-                    int digits = length.ToString(CultureInfo.InvariantCulture).Length;
-                    _rawTransferWidth = Math.Max(_rawTransferWidth, digits * 2 + "/ bytes".Length);
-                }
             }
         }
         return item;
@@ -147,24 +140,26 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
             if (_items.Count == 0)
                 return Text.Empty;
 
-            int transferWidth = settings.RawNumbers ? _rawTransferWidth : 23;
-            int speedWidth = settings.RawNumbers ? 18 : 13;
-            const int etaWidth = 11;
+            int transferWidth = settings.RawNumbers ? 45 : 25;
+            int speedWidth = settings.RawNumbers ? 27 : 13;
+            // One observed byte in a 60-second window bounds the longest estimate.
+            int etaWidth = settings.RawNumbers ? 24 : 21;
             const int partWidth = 6;
             int progressWidth = Math.Clamp(width / 6, 9, 22);
-            int free = width - progressWidth - 4;
+            // The table reserves left and right edges, column padding, and one separator per column gap.
+            int free = width - progressWidth - 7;
             bool bytes = free >= transferWidth + 12 && _hasTransfers;
             if (bytes)
-                free -= transferWidth + 2;
+                free -= transferWidth + 3;
             bool speed = bytes && free >= speedWidth + 12;
             if (speed)
-                free -= speedWidth + 2;
+                free -= speedWidth + 3;
             bool eta = speed && free >= etaWidth + 12;
             if (eta)
-                free -= etaWidth + 2;
+                free -= etaWidth + 3;
             bool worker = showWorker && bytes && free >= partWidth + 12;
             if (worker)
-                free -= partWidth + 2;
+                free -= partWidth + 3;
 
             var table = CreateTable().AddColumn(Column(itemHeading, Math.Max(1, free)))
                 .AddColumn(Column("Progress", progressWidth));
@@ -184,7 +179,7 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
                     .Take(Math.Max(1, capacity - 1))
                 : _items;
             int shown = 0;
-            foreach (Item item in prioritized.Reverse())
+            foreach (Item item in prioritized)
             {
                 double average = item.Rate?.At(Elapsed(item)) ?? 0;
                 var row = new List<IRenderable> { Cell(item.Name), Progress(item, progressWidth - 6) };
@@ -201,7 +196,7 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
                 shown++;
             }
 
-            return overflow ? new Rows(new Text($"+ {_items.Count - shown} more"), table) : table;
+            return overflow ? new Rows(table, new Text($"+ {_items.Count - shown} more")) : table;
         }
     }
 

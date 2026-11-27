@@ -6,7 +6,7 @@ using BaiduPCS.Transfers;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
-namespace BaiduPCS.Cli;
+namespace BaiduPCS.Cli.Commands;
 
 internal sealed class ExportCommand : RemoteCommand<ExportCommand.Settings>
 {

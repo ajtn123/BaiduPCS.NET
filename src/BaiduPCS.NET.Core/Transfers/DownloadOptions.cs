@@ -11,6 +11,7 @@ public sealed record DownloadOptions
     public bool TestOnly { get; init; }
     public bool Overwrite { get; init; }
     public bool Verify { get; init; }
+    public string? ExpectedMd5 { get; init; }
     public bool PreserveModifiedTime { get; init; }
     public bool Executable { get; init; }
     public bool Preallocate { get; init; } = true;

@@ -9,6 +9,7 @@ public sealed record UploadOptions
     public int Retries { get; init; } = 3;
     public bool SkipRapidCheck { get; init; }
     public bool RemoveSource { get; init; }
+    public bool PreserveModifiedTime { get; init; }
 }
 
 public enum UploadResult { Uploaded, RapidUpload, Skipped }

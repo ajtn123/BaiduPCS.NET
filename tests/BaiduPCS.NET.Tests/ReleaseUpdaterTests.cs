@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
-using BaiduPCS.Cli;
+using BaiduPCS.Cli.Commands;
 using BaiduPCS.Utilities;
 
 namespace BaiduPCS.Tests;

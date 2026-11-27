@@ -1,50 +1,10 @@
-using System.Globalization;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using BaiduPCS.Utilities;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
-namespace BaiduPCS.Cli;
-
-internal sealed class BeijingTimeCommand : Command<CommonSettings>
-{
-    public override int Execute(CommandContext context, CommonSettings settings, CancellationToken cancellationToken)
-    {
-        Console.WriteLine(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture));
-        return 0;
-    }
-}
-
-internal sealed class IpCommand : ProfileCommand<CommonSettings>
-{
-    public override async Task<int> ExecuteAsync(CommandContext context, CommonSettings settings, CancellationToken cancellationToken)
-    {
-        foreach (IPAddress address in NetworkInfo.LocalAddresses())
-            Console.WriteLine($"Local: {address}");
-
-        var settingsSnapshot = (await Store.ReadAsync(cancellationToken)).Settings;
-        Console.WriteLine($"Public: {await NetworkInfo.GetPublicAddressAsync(settingsSnapshot, cancellationToken)}");
-        return 0;
-    }
-}
-
-internal sealed class ToolCryptoSettings : CommonSettings
-{
-    [CommandArgument(0, "<file>")] public string[] Files { get; init; } = [];
-    [CommandOption("--method <METHOD>")] public string Method { get; init; } = "aes-128-ctr";
-    [CommandOption("--key <KEY>")] public string? Key { get; init; }
-    [CommandOption("--key-stdin")] public bool KeyStdin { get; init; }
-    [CommandOption("--no-gzip")] public bool NoGzip { get; init; }
-    [CommandOption("--remove-source")] public bool RemoveSource { get; init; }
-    [CommandOption("--overwrite")] public bool Overwrite { get; init; }
-
-    public override ValidationResult Validate() => !LegacyFileCrypto.Supports(Method)
-        ? ValidationResult.Error("Use aes-128, aes-192, or aes-256 with ctr, cfb, or ofb.")
-        : Key is not null && KeyStdin ? ValidationResult.Error("Choose --key or --key-stdin.")
-        : ValidationResult.Success();
-}
+namespace BaiduPCS.Cli.Commands;
 
 internal abstract class ToolCryptoCommand(bool decrypt) : AsyncCommand<ToolCryptoSettings>
 {
@@ -141,6 +101,3 @@ internal abstract class ToolCryptoCommand(bool decrypt) : AsyncCommand<ToolCrypt
         }
     }
 }
-
-internal sealed class EncryptCommand() : ToolCryptoCommand(decrypt: false);
-internal sealed class DecryptCommand() : ToolCryptoCommand(decrypt: true);

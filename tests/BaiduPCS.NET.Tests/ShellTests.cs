@@ -1,5 +1,6 @@
 using System.Globalization;
 using BaiduPCS.Cli;
+using BaiduPCS.Cli.Commands;
 
 namespace BaiduPCS.Tests;
 

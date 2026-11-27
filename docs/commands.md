@@ -15,7 +15,7 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 | `mkdir`, `rm`, `cp`, `mv` | `mkdir`, `remove`, `copy`, `move`, `rename` | Aliases `rm`, `cp`, and `mv`. Copy and move accept multiple sources and a destination. Rename accepts regex replacements with `--pattern`, `--replacement`, and `--dry-run`. |
 | `d`, `download` | `download` | Alias `d`. Use `--resume-all` for the active account's queued files, `--stream-discovery` to transfer during traversal, or `--no-preallocate` to write each file progressively. Run `download --help` for transfer options. |
 | `lt`, `locate` | `download-links` | Alias `locate`. Add `--pan` for the Pan web endpoint. |
-| `u`, `upload` | `upload` | Alias `u`. Pass local sources and a remote directory, or use `upload - REMOTE_FILE` for binary stdin. Use `--as NAME` for a single local source or `--remove-source` for a verified move. |
+| `u`, `upload` | `upload` | Alias `u`. Pass local paths or globs and a remote directory, or use `upload - REMOTE_FILE` for binary stdin. Use `--as NAME` for a single local source or `--remove-source` for a verified move. |
 | `sf`, `sumfile` | `checksum` | Size, MD5, first 256 KiB MD5, CRC32, and checksum-link output. |
 | `ep`, `export` | `export` | `--stdout` writes only records. `--out` appends to a file. Use `--format manifest\|checksum-link`, `--root`, `--recursive`, or `--retries`. |
 | `share set`, `share list`, `share cancel` | `share create`, `share list`, `share cancel` | Use `--code`, `--days`, `--combined`, and `list --page`. |
@@ -28,6 +28,8 @@ This table maps the workflows in [BaiduPCS-Go at `1b91318`](https://github.com/q
 | `tool showtime`, `getip`, `enc`, `dec` | `tool time`, `tool ip`, `tool encrypt`, `tool decrypt` | Encrypt and decrypt accept `--method`, `--key-stdin`, `--no-gzip`, `--remove-source`, and `--overwrite`. |
 | `update` | `update check`, `update apply` | `apply --yes` skips the prompt. The updater verifies the executable for the current runtime and retains a `.previous` copy. |
 
+`account`, `offline`, `recycle`, and `share` accept `ls` for `list`. `offline` and `recycle` accept `rm` for `delete`.
+
 On Windows, a helper installs the standalone update after the current process exits. The next launch clears the helper from a completed update. To roll back, close BaiduPCS.NET and restore the `.previous` file to the executable's original name.
 
 `account login --cookies-stdin` accepts a single browser Cookie request header. The optional `Cookie:` prefix, quoted values, comma-separated values, and existing percent escapes are handled during parsing. Cookie values such as session tokens and encoded strings are passed without URL decoding.
@@ -37,15 +39,45 @@ On Windows, a helper installs the standalone update after the current process ex
 ```sh
 baidupcs list /reports --sort size --descending --totals
 baidupcs download '/reports/*.csv' --output-directory ./reports --verify
-baidupcs upload ./reports /backup --conflict overwrite-if-size-differs
+baidupcs upload './reports/*.csv' /backup --conflict overwrite-if-size-differs
 baidupcs export /backup --recursive --root /restored --stdout
 ```
 
 Direct download is the default. If it is unavailable for the account or region, try `--mode pcs` or `--mode stream`. `--link-index` is zero-based. `--test` reads the data without creating local output. Verification uses metadata hashes where suitable and always validates transfer length. An existing destination is skipped unless `--overwrite` is set.
 
-Downloads and uploads show an updating table in the shell and in one-shot terminal commands. Rows fill from the bottom up. Each active file has a progress bar and shares the table with pending and finished files. On short terminals, rows are selected in priority order from active files, the front of the queue, later queued files, and finished files. The final results include every completed operation. The Transferred, Speed, and ETA columns use fixed widths for the current window, and narrow terminals show fewer columns. Speed and ETA use an average over the last 60 seconds, or the time transferred so far for a new file. Use `--worker-status` for download worker details. Redirected commands show plain results. Use `--raw-numbers` for exact byte counts and durations in seconds, and `--json` on supported commands for machine-readable output.
+Downloads, uploads, and sync show an updating table in the shell and in one-shot terminal commands. Rows fill from top to bottom. Each active file has a progress bar and shares the table with pending and finished files. On short terminals, rows are selected in priority order from active files, the front of the queue, later queued files, and finished files. The final results include every completed operation. The Transferred, Speed, and ETA columns use fixed widths for the current window, and narrow terminals show fewer columns. Speed and ETA use an average over the last 60 seconds, or the time transferred so far for a new file. Use `--worker-status` for download worker details. Redirected commands show plain results. Use `--raw-numbers` for exact byte counts and durations in seconds, and `--json` on supported commands for machine-readable output.
 
 Directory listing uses the paged Pan endpoint. When Pan rejects the session, the client can fall back to the older PCS listing used by BaiduPCS-Go 4.0.1. If PCS reaches its 1,000-entry limit, sign in with Pan session cookies for a complete listing.
+
+## Folder sync
+
+Both folder roots must exist. Use `-r` or `--recursive` to include subdirectories. The command shows the planned changes and asks before applying them. `--dry-run` shows the plan and exits. `--yes` applies it without prompting and is required when input or output is redirected.
+
+| Mode | Changes |
+| --- | --- |
+| `upload` | Copies missing or changed local files to Netdisk. |
+| `download` | Copies missing or changed Netdisk files to the local folder. |
+| `transfer-missing` | Copies missing paths in both directions by default. Use `--direction upload` or `--direction download` for one direction. |
+| `remove-missing` | Deletes destination files absent from the source. Requires `--direction upload` to remove from Netdisk or `--direction download` to remove locally. With recursion and no glob, it also removes destination-only directories that are empty when checked. |
+
+The missing-only modes compare relative paths. Upload and download default to `--compare name,time,length`. Use a comma-separated combination of `name`, `time`, `length`, and `checksum`. With `name`, path names must match exactly. Without it, name matching ignores case and reports ambiguous paths. Times are compared to the second. Sync downloads preserve the remote file's client modification time, with the server time as a fallback, and sync uploads send the local file's modification time to Baidu. Checksum comparison uses full-file MD5.
+
+Repeat `--glob` to include files matching any supplied pattern. A basename pattern such as `*.csv` matches at every scanned depth. A path pattern such as `reports/**/*.csv` uses `/` separators and matches relative to the sync roots. Globs apply to files and keep unmatched directories out of a removal plan. Sync stops if a listing is incomplete or if a planned path changes before it can be acted on. Re-run the preview after a failed or interrupted sync to see what remains.
+
+```sh
+baidupcs sync ./reports /reports --mode upload -r --glob '*.csv' --dry-run
+baidupcs sync ./reports /reports --mode download -r --compare length,checksum
+baidupcs sync ./reports /reports --mode transfer-missing -r
+baidupcs sync ./reports /reports --mode remove-missing --direction upload -r --dry-run
+```
+
+## Python automation
+
+After signing in to BaiduPCS.NET once, run the Python example with the absolute Netdisk file path and the local output directory. It reads the file's metadata as JSON, uses the saved profile, and skips an existing local destination. Pass `--baidupcs` if the executable is outside PATH. [Python example](../examples/download.py)
+
+```sh
+python examples/download.py '/reports/Quarter 1.csv' ./reports
+```
 
 ## Batch file operations
 

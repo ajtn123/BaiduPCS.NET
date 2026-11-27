@@ -43,12 +43,14 @@ public sealed partial class NetdiskClient
             return UploadResult.Skipped;
 
         FileChecksums sums = await FileChecksums.ComputeAsync(file, cancellationToken);
-        if (skip || !options.SkipRapidCheck && MatchesSource(existing))
+        if (skip || !options.SkipRapidCheck && MatchesSource(existing)
+            && (!options.PreserveModifiedTime || RemoteModifiedMatches(existing!)))
             return await FinishAsync(UploadResult.Skipped, existing);
 
         int blockSize = length >= 32 * GiB ? 64 * MiB : length >= 8 * GiB ? 16 * MiB : 4 * MiB;
         string[] blocks = await HashBlocksAsync(file.SafeFileHandle, length, blockSize, cancellationToken);
-        var identity = new UploadIdentity(1, _account.Id, source, target, length, modified, sums.Md5, blockSize, options.Conflict);
+        var identity = new UploadIdentity(1, _account.Id, source, target, length, modified, sums.Md5, blockSize, options.Conflict,
+            options.PreserveModifiedTime);
         Directory.CreateDirectory(checkpointDirectory);
         string key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{_account.Id}:{target}")));
         string statePath = Path.Combine(checkpointDirectory, key + ".json");
@@ -67,7 +69,8 @@ public sealed partial class NetdiskClient
             if (checkpoint is null)
             {
                 JsonElement precreate = await PrecreateUploadAsync(file.SafeFileHandle, identity, sums, blocks, rtype,
-                    options.SkipRapidCheck, cancellationToken);
+                    options.SkipRapidCheck || options.PreserveModifiedTime && existing is not null && !RemoteModifiedMatches(existing),
+                    cancellationToken);
                 if (precreate.Number("return_type") == 2)
                 {
                     File.Delete(statePath);
@@ -88,7 +91,7 @@ public sealed partial class NetdiskClient
                 if (file.Length != length || File.GetLastWriteTimeUtc(source) != modified)
                     throw new IOException("The local source changed during upload.");
 
-                await SendFormAsync(_transport.Pan("create"), "upload finalization", new()
+                var form = new Dictionary<string, string>
                 {
                     ["uploadid"] = checkpoint.UploadId,
                     ["path"] = target,
@@ -97,7 +100,10 @@ public sealed partial class NetdiskClient
                     ["rtype"] = rtype,
                     ["block_list"] = JsonSerializer.Serialize(blocks),
                     ["target_path"] = RemotePath.Parent(target),
-                }, cancellationToken);
+                };
+                if (identity.PreserveModifiedTime)
+                    form["local_mtime"] = BaiduTransport.Format(new DateTimeOffset(identity.Modified).ToUnixTimeSeconds());
+                await SendFormAsync(_transport.Pan("create"), "upload finalization", form, cancellationToken);
             }
             catch (BaiduApiException error) when (attempt == 0 && error.Code is 31061 or 31363)
             {
@@ -112,6 +118,9 @@ public sealed partial class NetdiskClient
 
         bool MatchesSource(RemoteEntry? entry) => entry is { IsDirectory: false } && entry.Size == length
             && string.Equals(entry.Md5, sums.Md5, StringComparison.OrdinalIgnoreCase);
+
+        bool RemoteModifiedMatches(RemoteEntry entry) =>
+            (entry.LocalModified ?? entry.Modified).ToUnixTimeSeconds() == new DateTimeOffset(modified).ToUnixTimeSeconds();
 
         async Task<UploadResult> FinishAsync(UploadResult result, RemoteEntry? remote = null)
         {
@@ -148,6 +157,8 @@ public sealed partial class NetdiskClient
             ["contentCrc32"] = sums.Crc32.ToString(CultureInfo.InvariantCulture),
             ["rtype"] = rtype,
         };
+        if (identity.PreserveModifiedTime)
+            form["local_mtime"] = BaiduTransport.Format(new DateTimeOffset(identity.Modified).ToUnixTimeSeconds());
         if (!skipRapidCheck)
         {
             try
@@ -313,7 +324,7 @@ public sealed partial class NetdiskClient
     }
 
     private sealed record UploadIdentity(int Version, ulong AccountId, string Source, string Target, long Length, DateTime Modified,
-        string Md5, int BlockSize, UploadConflict Conflict);
+        string Md5, int BlockSize, UploadConflict Conflict, bool PreserveModifiedTime);
     private sealed record UploadCheckpoint(UploadIdentity Identity, string UploadId, bool[] Completed);
 
     private sealed class UploadPartContent(SafeFileHandle file, long offset, long length, TransferRate rate,

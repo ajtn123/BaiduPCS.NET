@@ -31,6 +31,7 @@
   <data name="Resolve direct or Pan web download links." xml:space="preserve"><value>获取直链或网盘网页下载链接。</value></data>
   <data name="Download files and directory trees from Baidu Netdisk." xml:space="preserve"><value>从百度网盘下载文件或目录。</value></data>
   <data name="Upload local files or directory trees to a remote directory." xml:space="preserve"><value>上传本地文件或目录到网盘。</value></data>
+  <data name="Preview and synchronize a local folder with a Netdisk folder." xml:space="preserve"><value>预览并同步本地目录与网盘目录。</value></data>
   <data name="Calculate Baidu file checksums and checksum links." xml:space="preserve"><value>计算百度网盘文件校验值及校验链接。</value></data>
   <data name="Export remote file checksums and directory structure." xml:space="preserve"><value>导出网盘文件的校验值和目录结构。</value></data>
   <data name="Start the interactive shell." xml:space="preserve"><value>启动交互式命令行。</value></data>

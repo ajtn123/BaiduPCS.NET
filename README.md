@@ -58,7 +58,7 @@ Run `baidupcs` in a terminal to enter the shell. Use `help`, Tab completion, and
 | --- | --- |
 | Accounts and settings | `account list`, `account switch UID`, `config show`, `config set cache-size=128KiB download-rate=2MiB/s` |
 | Browse or manage files | `cd`, `pwd`, `list`, `tree`, `search`, `match`, `metadata`, `mkdir`, `copy`, `move`, `rename`, `remove` |
-| Upload and download | `upload`, `download`, `download-links` |
+| Transfer and sync | `upload`, `download`, `download-links`, `sync` |
 | Share and recover files | `share create`, `share import`, `share list`, `share cancel`, `recycle list`, `recycle restore`, `recycle delete` |
 | Manage offline tasks | `offline add`, `offline query`, `offline list`, `offline cancel`, `offline delete` |
 | Export and local tools | `checksum`, `export`, `tool encrypt`, `tool decrypt`, `tool ip`, `tool time`, `run -- EXECUTABLE ARG...` |
@@ -66,7 +66,9 @@ Run `baidupcs` in a terminal to enter the shell. Use `help`, Tab completion, and
 
 Use `ls` or `ll` for `list`, `d` for `download`, and `u` for `upload`. `cd` changes the remote working directory. These names work in the interactive shell and in one-shot commands. For all options and aliases, see [Command reference and migration](docs/commands.md).
 
-Transfers in a terminal show a live table with pending, active, and finished files. Rows fill from the bottom up. When terminal height is limited, active files and the next queued files take priority. Speed averages the preceding minute and drives the ETA. Use `--raw-numbers` for exact byte counts and durations in seconds.
+Transfers in a terminal show a live table with pending, active, and finished files. Rows fill from top to bottom. When terminal height is limited, active files and the next queued files take priority. Speed averages the preceding minute and drives the ETA. Use `--raw-numbers` for exact byte counts and durations in seconds.
+
+Preview a folder sync with `baidupcs sync ./reports /reports --mode upload --recursive --dry-run`. [Sync modes and filters](docs/commands.md#folder-sync)
 
 ## Configuration
 
@@ -85,6 +87,7 @@ Standalone rapid-link import was disabled in the pinned Go command. Checksum lin
 - Build from source, run the tests, and submit changes. [Contributing](CONTRIBUTING.md)
 - Report vulnerabilities privately and protect account credentials. [Security policy](SECURITY.md)
 - Read about the CLI, core API, and verification. [Architecture and API design](docs/architecture.md)
+- Download a specified file from a Python script using your existing profile. [Python example](examples/download.py)
 - Build and publish standalone releases. [Release guide](docs/release.md)
 
 ## License

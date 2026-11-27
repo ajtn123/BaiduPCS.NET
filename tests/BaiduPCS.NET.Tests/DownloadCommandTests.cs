@@ -1,5 +1,6 @@
 using System.Net;
 using BaiduPCS.Cli;
+using BaiduPCS.Cli.Commands;
 using BaiduPCS.Netdisk;
 using BaiduPCS.Transfers;
 

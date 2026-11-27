@@ -71,14 +71,14 @@ public sealed class OperationDisplayTests
         Assert.Contains("50%", full);
         Assert.Contains("/later", full);
         Assert.Contains("/last", full);
-        Assert.True(full.IndexOf("/last", StringComparison.Ordinal) < full.IndexOf("/finished", StringComparison.Ordinal));
+        Assert.True(full.IndexOf("/finished", StringComparison.Ordinal) < full.IndexOf("/last", StringComparison.Ordinal));
 
         output.GetStringBuilder().Clear();
         console.Write(display.Render(100, 6));
         string compact = output.ToString();
         Assert.Contains("/active", compact);
         Assert.Contains("/next", compact);
-        Assert.True(compact.IndexOf("/next", StringComparison.Ordinal) < compact.IndexOf("/active", StringComparison.Ordinal));
+        Assert.True(compact.IndexOf("/active", StringComparison.Ordinal) < compact.IndexOf("/next", StringComparison.Ordinal));
         Assert.Contains("+ 3 more", compact);
         Assert.DoesNotContain("/later", compact);
         Assert.DoesNotContain("/finished", compact);
@@ -92,8 +92,8 @@ public sealed class OperationDisplayTests
         Assert.DoesNotContain("/finished", pendingFirst);
         Assert.DoesNotContain("/other-finished", pendingFirst);
         Assert.Contains("/active", pendingFirst);
-        Assert.True(pendingFirst.IndexOf("/last", StringComparison.Ordinal) < pendingFirst.IndexOf("/next", StringComparison.Ordinal));
-        Assert.True(pendingFirst.IndexOf("/active", StringComparison.Ordinal) < pendingFirst.IndexOf("/last", StringComparison.Ordinal));
+        Assert.True(pendingFirst.IndexOf("/next", StringComparison.Ordinal) < pendingFirst.IndexOf("/last", StringComparison.Ordinal));
+        Assert.True(pendingFirst.IndexOf("/last", StringComparison.Ordinal) < pendingFirst.IndexOf("/active", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -103,20 +103,22 @@ public sealed class OperationDisplayTests
     {
         using var output = new StringWriter();
         IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings { Out = new AnsiConsoleOutput(output) });
-        console.Profile.Width = 120;
+        console.Profile.Width = 150;
         var display = new OperationDisplay(new CommonSettings { RawNumbers = raw }, "File", console: console);
-        var item = display.Begin(display.Enqueue("/file", 25000000));
-        display.Report(item, 50, 25000000, null);
-        console.Write(display.Render(120, 20));
+        var item = display.Begin(display.Enqueue("/file", long.MaxValue));
+        display.Report(item, 1, long.MaxValue, null);
+        console.Write(display.Render(150, 20));
         string header = Header();
         Assert.Contains("Transferred", header);
         Assert.Contains("Speed", header);
         Assert.Contains("ETA", header);
 
         output.GetStringBuilder().Clear();
-        display.Report(item, 12500000, 25000000, null);
-        console.Write(display.Render(120, 20));
+        display.Report(item, long.MaxValue - 1000, long.MaxValue, null);
+        console.Write(display.Render(150, 20));
         Assert.Equal(header, Header());
+        string transferred = raw ? "9223372036854774807/9223372036854775807 bytes" : "8 EiB / 8 EiB";
+        Assert.True(output.ToString().Contains(transferred, StringComparison.Ordinal), output.ToString());
 
         string Header() => output.ToString().Split('\n').Single(line => line.Contains("Transferred", StringComparison.Ordinal));
     }

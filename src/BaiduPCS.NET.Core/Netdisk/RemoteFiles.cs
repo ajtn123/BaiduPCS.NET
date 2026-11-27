@@ -7,7 +7,10 @@ namespace BaiduPCS.Netdisk;
 public enum FileSort { Name, Time, Size }
 
 public sealed record RemoteEntry(long Id, long AppId, string Path, string Name, bool IsDirectory, long Size,
-    DateTimeOffset Created, DateTimeOffset Modified, string Md5, IReadOnlyList<string> Blocks);
+    DateTimeOffset Created, DateTimeOffset Modified, string Md5, IReadOnlyList<string> Blocks)
+{
+    public DateTimeOffset? LocalModified { get; init; }
+}
 
 public sealed record Quota(long Total, long Used)
 {
@@ -42,11 +45,18 @@ public sealed partial class NetdiskClient : IDisposable
         return new Quota(total, used);
     }
 
-    public async IAsyncEnumerable<RemoteEntry> ListAsync(string path, FileSort order = FileSort.Name, bool descending = false,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<RemoteEntry> ListAsync(string path, FileSort order = FileSort.Name, bool descending = false,
+        CancellationToken cancellationToken = default) => ListDirectoryAsync(path, order, descending, false, cancellationToken);
+
+    public IAsyncEnumerable<RemoteEntry> ListCompleteAsync(string path, CancellationToken cancellationToken = default) =>
+        ListDirectoryAsync(path, FileSort.Name, false, true, cancellationToken);
+
+    private async IAsyncEnumerable<RemoteEntry> ListDirectoryAsync(string path, FileSort order, bool descending, bool requireComplete,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         string sort = order.ToString().ToLowerInvariant();
         var emitted = new HashSet<long>();
+        var paths = requireComplete ? new HashSet<string>(StringComparer.Ordinal) : null;
         for (int page = 1; page <= PageLimit; page++)
         {
             Uri uri = _transport.Pan("list", ("dir", path), ("order", sort),
@@ -55,12 +65,12 @@ public sealed partial class NetdiskClient : IDisposable
             RemoteEntry[] entries;
             try
             {
-                entries = ReadEntries(await _transport.JsonAsync(HttpMethod.Get, uri, "directory listing", true, cancellationToken));
+                entries = ReadEntries(await _transport.JsonAsync(HttpMethod.Get, uri, "directory listing", true, cancellationToken), requireComplete);
             }
             catch (BaiduApiException error) when (page == 1 && error.Code == -6)
             {
                 Uri pcs = _transport.Pcs("file", "list", ("path", path), ("by", sort), ("order", descending ? "desc" : "asc"));
-                entries = ReadEntries(await _transport.JsonAsync(HttpMethod.Get, pcs, "PCS directory listing", false, cancellationToken));
+                entries = ReadEntries(await _transport.JsonAsync(HttpMethod.Get, pcs, "PCS directory listing", false, cancellationToken), requireComplete);
                 if (entries.Length >= PageSize)
                     throw new InvalidDataException("PCS returned its first 1,000 directory entries. Sign in with Pan session cookies to list the entire directory.");
             }
@@ -68,6 +78,10 @@ public sealed partial class NetdiskClient : IDisposable
             int newEntries = 0;
             foreach (RemoteEntry entry in entries)
             {
+                if (paths is not null && (entry.Id <= 0 || entry.Size < 0 || entry.Path == path
+                    || RemotePath.Parent(entry.Path) != path || RemotePath.Resolve("/", entry.Path) != entry.Path
+                    || entry.Name != RemotePath.Name(entry.Path) || !paths.Add(entry.Path) || emitted.Contains(entry.Id)))
+                    throw new InvalidDataException("Baidu returned an incomplete or inconsistent directory listing.");
                 if (!emitted.Add(entry.Id))
                     continue;
 
@@ -209,14 +223,17 @@ public sealed partial class NetdiskClient : IDisposable
             throw new ArgumentException("The operation requires a normalized path below the remote root.");
     }
 
-    private static RemoteEntry[] ReadEntries(JsonElement root)
+    private static RemoteEntry[] ReadEntries(JsonElement root, bool requireComplete = false)
     {
         JsonElement field = root.Field("list");
-        if (field.ValueKind == JsonValueKind.Null)
+        if (field.ValueKind == JsonValueKind.Null && !requireComplete)
             return [];
         if (field.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("Baidu returned a response without a file list.");
 
+        if (requireComplete && field.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.Object
+            || item.Number("isdir", -1) is not (0 or 1) || item.Number("isdir") == 0 && item.Number("size", -1) < 0))
+            throw new InvalidDataException("Baidu returned an incomplete directory listing.");
         return field.EnumerateArray().Where(item => item.ValueKind != JsonValueKind.Null).Select(ReadEntry).ToArray();
     }
 
@@ -227,11 +244,15 @@ public sealed partial class NetdiskClient : IDisposable
             throw new InvalidDataException("Baidu returned a file without an absolute path.");
 
         string name = item.Text("server_filename");
+        long localModified = item.Number("local_mtime", -1);
         return new RemoteEntry(item.Number("fs_id"), item.Number("app_id"), path,
             name.Length > 0 ? name : RemotePath.Name(path), item.Number("isdir") == 1, item.Number("size"),
             DateTimeOffset.FromUnixTimeSeconds(item.Number("server_ctime", item.Number("ctime"))),
             DateTimeOffset.FromUnixTimeSeconds(item.Number("server_mtime", item.Number("mtime"))),
-            DecodeMd5(item.Text("md5")), item.Items("block_list").Select(value => value.GetString() ?? "").ToArray());
+            DecodeMd5(item.Text("md5")), item.Items("block_list").Select(value => value.GetString() ?? "").ToArray())
+        {
+            LocalModified = localModified >= 0 ? DateTimeOffset.FromUnixTimeSeconds(localModified) : null,
+        };
     }
 
     private static string DecodeMd5(string value)

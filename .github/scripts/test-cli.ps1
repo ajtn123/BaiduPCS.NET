@@ -44,8 +44,14 @@ try {
     if ($listHelp -notmatch '--json\b' -or $downloadHelp -notmatch '--output-directory\b' -or $cdHelp -notmatch '--list\b') {
         throw 'A common command name did not resolve to the expected command.'
     }
-    $shellHelp = (@('help ls', 'help d', 'quit', 'invalid-command') | dotnet $cli shell) -join "`n"
-    if ($shellHelp -notmatch '--json\b' -or $shellHelp -notmatch '--output-directory\b') {
+    $recycleHelp = (dotnet $cli recycle ls --help) -join "`n"
+    $offlineHelp = (dotnet $cli offline rm --help) -join "`n"
+    $syncHelp = (dotnet $cli sync --help) -join "`n"
+    if ($recycleHelp -notmatch '--page\b' -or $offlineHelp -notmatch '--all\b' -or $syncHelp -notmatch '--dry-run\b') {
+        throw 'A subcommand alias or sync did not resolve to the expected command.'
+    }
+    $shellHelp = (@('help ls', 'help d', 'help recycle ls', 'quit', 'invalid-command') | dotnet $cli shell) -join "`n"
+    if ($shellHelp -notmatch '--json\b' -or $shellHelp -notmatch '--output-directory\b' -or $shellHelp -notmatch '--page\b') {
         throw 'Aliases did not resolve inside the shell.'
     }
 

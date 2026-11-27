@@ -112,11 +112,12 @@ public sealed partial class NetdiskClient
                 }, options.Retries, cancellationToken);
             }
 
-            if (options.Verify && entry.Md5.Length == 32 && entry.Blocks.Count <= 1)
+            string? expectedMd5 = options.ExpectedMd5 ?? (options.Verify && entry.Md5.Length == 32 && entry.Blocks.Count <= 1 ? entry.Md5 : null);
+            if (expectedMd5 is not null)
             {
                 file.Position = 0;
                 string actual = Convert.ToHexStringLower(await MD5.HashDataAsync(file, cancellationToken));
-                if (!actual.Equals(entry.Md5, StringComparison.OrdinalIgnoreCase))
+                if (!actual.Equals(expectedMd5, StringComparison.OrdinalIgnoreCase))
                 {
                     File.Delete(state);
                     if (IsPlaceholder(entry.Size, actual))

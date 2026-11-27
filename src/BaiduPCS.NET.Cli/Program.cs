@@ -1,45 +1,42 @@
 using System.Reflection;
+using BaiduPCS.Cli;
+using BaiduPCS.Cli.Commands;
 using BaiduPCS.Netdisk;
 using Spectre.Console.Cli;
 
-namespace BaiduPCS.Cli;
+using var shutdown = new CancellationTokenSource();
+Console.CancelKeyPress += Cancel;
+try
+{
+    if (args.Length > 0 && args[0] == ApplyUpdateCommand.HelperCommand)
+        return await ApplyUpdateCommand.FinishWindowsUpdateAsync(args, shutdown.Token);
 
-internal static class Program
+#if BAIDUPCS_STANDALONE
+    if (OperatingSystem.IsWindows() && Environment.ProcessPath is { } executable)
+        ApplyUpdateCommand.RemoveCompletedWindowsStages(Path.GetDirectoryName(executable)!);
+#endif
+    return await RunAsync(args.Length == 0
+        ? [!Console.IsInputRedirected && !Console.IsOutputRedirected ? "shell" : "--help"] : args, shutdown.Token);
+}
+finally
+{
+    Console.CancelKeyPress -= Cancel;
+}
+
+void Cancel(object? sender, ConsoleCancelEventArgs eventArgs)
+{
+    if (shutdown.IsCancellationRequested)
+        return;
+
+    eventArgs.Cancel = true;
+    shutdown.Cancel();
+}
+
+internal partial class Program
 {
     internal static string Version { get; } = typeof(Program).Assembly
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
     internal static bool RestartAfterUpdate { get; set; }
-
-    private static async Task<int> Main(string[] args)
-    {
-        using var shutdown = new CancellationTokenSource();
-        ConsoleCancelEventHandler cancel = (_, eventArgs) =>
-        {
-            if (shutdown.IsCancellationRequested)
-                return;
-
-            eventArgs.Cancel = true;
-            shutdown.Cancel();
-        };
-
-        Console.CancelKeyPress += cancel;
-        try
-        {
-            if (args.Length > 0 && args[0] == ApplyUpdateCommand.HelperCommand)
-                return await ApplyUpdateCommand.FinishWindowsUpdateAsync(args, shutdown.Token);
-
-#if BAIDUPCS_STANDALONE
-            if (OperatingSystem.IsWindows() && Environment.ProcessPath is { } executable)
-                ApplyUpdateCommand.RemoveCompletedWindowsStages(Path.GetDirectoryName(executable)!);
-#endif
-            return await RunAsync(args.Length == 0
-                ? [!Console.IsInputRedirected && !Console.IsOutputRedirected ? "shell" : "--help"] : args, shutdown.Token);
-        }
-        finally
-        {
-            Console.CancelKeyPress -= cancel;
-        }
-    }
 
     internal static Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
@@ -96,7 +93,7 @@ internal static class Program
                 branch.SetDescription(Ui.Text("Manage Baidu accounts."));
                 completions.Register<LoginCommand>(branch, "account", "login").WithDescription(Ui.Text("Sign in using Baidu browser cookies or their tokens."));
                 completions.Register<ImportAccountCommand>(branch, "account", "import-go").WithDescription(Ui.Text("Import a BaiduPCS-Go profile."));
-                completions.Register<ListAccountsCommand>(branch, "account", "list").WithDescription(Ui.Text("List saved accounts."));
+                completions.Register<ListAccountsCommand>(branch, "account", "list", "ls").WithDescription(Ui.Text("List saved accounts."));
                 completions.Register<CurrentAccountCommand>(branch, "account", "current").WithDescription(Ui.Text("Show the active account."));
                 completions.Register<SwitchAccountCommand>(branch, "account", "switch").WithDescription(Ui.Text("Switch the active account."));
                 completions.Register<LogoutCommand>(branch, "account", "logout").WithDescription(Ui.Text("Remove the active saved account."));
@@ -119,6 +116,7 @@ internal static class Program
             completions.Register<DownloadLinksCommand>(config, "download-links", "locate").WithDescription(Ui.Text("Resolve direct or Pan web download links."));
             completions.Register<DownloadCommand>(config, "download", "d").WithDescription(Ui.Text("Download files and directory trees from Baidu Netdisk."));
             completions.Register<UploadCommand>(config, "upload", "u").WithDescription(Ui.Text("Upload local files or directory trees to a remote directory."));
+            completions.Register<SyncCommand>(config, "sync").WithDescription(Ui.Text("Preview and synchronize a local folder with a Netdisk folder."));
             completions.Register<ChecksumCommand>(config, "checksum").WithDescription(Ui.Text("Calculate Baidu file checksums and checksum links."));
             completions.Register<ExportCommand>(config, "export").WithDescription(Ui.Text("Export remote file checksums and directory structure."));
             completions.Register<ShellCommand>(config, "shell").WithData(completions).WithDescription(Ui.Text("Start the interactive shell."));
@@ -130,22 +128,22 @@ internal static class Program
                 branch.SetDescription(Ui.Text("Manage server-side download tasks."));
                 completions.Register<AddOfflineCommand>(branch, "offline", "add").WithDescription(Ui.Text("Submit URLs for Baidu to download."));
                 completions.Register<QueryOfflineCommand>(branch, "offline", "query").WithDescription(Ui.Text("Show specific offline tasks."));
-                completions.Register<ListOfflineCommand>(branch, "offline", "list").WithDescription(Ui.Text("List offline tasks."));
+                completions.Register<ListOfflineCommand>(branch, "offline", "list", "ls").WithDescription(Ui.Text("List offline tasks."));
                 completions.Register<CancelOfflineCommand>(branch, "offline", "cancel").WithDescription(Ui.Text("Cancel running offline tasks."));
-                completions.Register<DeleteOfflineCommand>(branch, "offline", "delete").WithDescription(Ui.Text("Delete offline task records."));
+                completions.Register<DeleteOfflineCommand>(branch, "offline", "delete", "rm").WithDescription(Ui.Text("Delete offline task records."));
             });
             config.AddBranch("recycle", branch =>
             {
                 branch.SetDescription(Ui.Text("Manage the drive's recycle bin."));
-                completions.Register<ListRecycleCommand>(branch, "recycle", "list").WithDescription(Ui.Text("List deleted files."));
+                completions.Register<ListRecycleCommand>(branch, "recycle", "list", "ls").WithDescription(Ui.Text("List deleted files."));
                 completions.Register<RestoreRecycleCommand>(branch, "recycle", "restore").WithDescription(Ui.Text("Restore files from the recycle bin."));
-                completions.Register<DeleteRecycleCommand>(branch, "recycle", "delete").WithDescription(Ui.Text("Permanently delete recycle-bin files."));
+                completions.Register<DeleteRecycleCommand>(branch, "recycle", "delete", "rm").WithDescription(Ui.Text("Permanently delete recycle-bin files."));
             });
             config.AddBranch("share", branch =>
             {
                 branch.SetDescription(Ui.Text("Create, manage, and import Baidu shares."));
                 completions.Register<CreateShareCommand>(branch, "share", "create").WithDescription(Ui.Text("Create a protected share for remote paths."));
-                completions.Register<ListSharesCommand>(branch, "share", "list").WithDescription(Ui.Text("List the active account's shares."));
+                completions.Register<ListSharesCommand>(branch, "share", "list", "ls").WithDescription(Ui.Text("List the active account's shares."));
                 completions.Register<CancelShareCommand>(branch, "share", "cancel").WithDescription(Ui.Text("Cancel shares by ID."));
                 completions.Register<ImportShareCommand>(branch, "share", "import").WithDescription(Ui.Text("Save shared files to the current remote directory."));
                 completions.Register<InspectShareCommand>(branch, "share", "inspect").WithDescription(Ui.Text("List files in a Baidu share without importing them."));
