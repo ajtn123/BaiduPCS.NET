@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using BaiduPCS.Cli;
 using Spectre.Console;
 
@@ -45,6 +46,32 @@ public sealed class OperationDisplayTests
     }
 
     [Fact]
+    public async Task ShortLiveTableKeepsItsHeaderAndHiddenRowCount()
+    {
+        using var output = new StringWriter();
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.Yes,
+            Interactive = InteractionSupport.Yes,
+            Out = new AnsiConsoleOutput(output),
+        });
+        console.Profile.Width = 120;
+        console.Profile.Height = 9;
+        var display = new OperationDisplay(new CommonSettings(), "File", console: console);
+        for (int i = 1; i <= 8; i++)
+            display.Enqueue($"/file-{i}", 400);
+
+        var complete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task running = display.RunAsync(() => complete.Task);
+        string frame = output.ToString();
+        complete.SetResult();
+        await running;
+
+        Assert.Contains(Ui.Text("Progress"), frame);
+        Assert.Contains(Ui.Format("+ {0} more", 4), frame);
+    }
+
+    [Fact]
     public void LiveTablePrefersActiveAndSoonestPendingRowsWhenHeightIsLimited()
     {
         using var output = new StringWriter();
@@ -74,7 +101,7 @@ public sealed class OperationDisplayTests
         Assert.True(full.IndexOf("/finished", StringComparison.Ordinal) < full.IndexOf("/last", StringComparison.Ordinal));
 
         output.GetStringBuilder().Clear();
-        console.Write(display.Render(100, 6));
+        console.Write(display.Render(100, 7));
         string compact = output.ToString();
         Assert.Contains("/active", compact);
         Assert.Contains("/next", compact);
@@ -87,7 +114,7 @@ public sealed class OperationDisplayTests
         var otherFinished = display.Begin("/other-finished");
         display.End(otherFinished, "Downloaded");
         display.End(active, "Downloaded");
-        console.Write(display.Render(100, 8));
+        console.Write(display.Render(100, 9));
         string pendingFirst = output.ToString();
         Assert.DoesNotContain("/finished", pendingFirst);
         Assert.DoesNotContain("/other-finished", pendingFirst);
@@ -111,7 +138,7 @@ public sealed class OperationDisplayTests
         string header = Header();
         Assert.Contains(Ui.Text("Transferred"), header);
         Assert.Contains(Ui.Text("Speed"), header);
-        Assert.Contains(Ui.Text("ETA"), header);
+        Assert.Contains(Ui.Text("ETA / Elapsed"), header);
 
         output.GetStringBuilder().Clear();
         display.Report(item, long.MaxValue - 1000, long.MaxValue, null);
@@ -121,6 +148,37 @@ public sealed class OperationDisplayTests
         Assert.True(output.ToString().Contains(transferred, StringComparison.Ordinal), output.ToString());
 
         string Header() => output.ToString().Split('\n').Single(line => line.Contains(Ui.Text("Transferred"), StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ShowsFrozenElapsedTimeInFinishedRowsAndTheSummary(bool raw)
+    {
+        using var output = new StringWriter();
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.Yes,
+            Interactive = InteractionSupport.Yes,
+            Out = new AnsiConsoleOutput(output),
+        });
+        console.Profile.Width = 150;
+        var display = new OperationDisplay(new CommonSettings { RawNumbers = raw }, "File", console: console);
+        var item = display.Begin(display.Enqueue("/finished", 400));
+        item.StartedAt -= 125 * Stopwatch.Frequency;
+        display.End(item, "Downloaded");
+        double duration = Assert.IsType<double>(item.ElapsedSeconds);
+        Assert.True(duration >= 125);
+        string elapsed = new DisplayNumbers(raw).Duration(duration);
+        item.StartedAt -= 60 * Stopwatch.Frequency;
+
+        console.Write(display.Render(150, 20));
+        Assert.Contains(elapsed, output.ToString());
+
+        output.GetStringBuilder().Clear();
+        await display.RunAsync(() => Task.CompletedTask);
+        Assert.Contains(Ui.Text("Elapsed"), output.ToString());
+        Assert.Contains(elapsed, output.ToString());
     }
 
     [Fact]

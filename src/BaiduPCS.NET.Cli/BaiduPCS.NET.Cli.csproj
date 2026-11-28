@@ -4,7 +4,7 @@
     <RootNamespace>BaiduPCS.Cli</RootNamespace>
     <AssemblyName>baidupcs</AssemblyName>
     <IsPackable>false</IsPackable>
-    <VersionPrefix>1.4.0</VersionPrefix>
+    <VersionPrefix>1.4.1</VersionPrefix>
     <VersionSuffix>dev</VersionSuffix>
     <Description>A command-line client for Baidu Netdisk.</Description>
     <RepositoryUrl>https://github.com/ajtn123/BaiduPCS.NET</RepositoryUrl>

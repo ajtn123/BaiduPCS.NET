@@ -358,12 +358,14 @@ public sealed class NetdiskClientTests
             var options = new UploadOptions { Parallel = 1, Retries = 0, SkipRapidCheck = true, PreserveModifiedTime = preserveMtime };
             await Assert.ThrowsAsync<BaiduApiException>(() => client.UploadAsync(source, "/file", directory, options,
                 cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.lock"));
             interrupted = false;
 
             Assert.Equal(UploadResult.Uploaded, await client.UploadAsync(source, "/file", directory, options,
                 cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(1, precreates);
             Assert.Equal([0, 1], confirmed);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.lock"));
         }
         finally
         {
@@ -392,6 +394,7 @@ public sealed class NetdiskClientTests
             string destination = Path.Combine(directory.FullName, "file");
             var options = new DownloadOptions { Mode = DownloadMode.Pcs, PreserveModifiedTime = preserve };
             Assert.True(await client.DownloadAsync(entry, destination, options, cancellationToken: TestContext.Current.CancellationToken));
+            Assert.False(Directory.Exists(Path.Combine(directory.FullName, ".baidupcs-partial")));
             DateTime actual = File.GetLastWriteTimeUtc(destination);
             DateTime expected = (hasClientTime ? clientTime : serverTime).UtcDateTime;
             if (preserve)
@@ -434,6 +437,7 @@ public sealed class NetdiskClientTests
             });
             using var client = Client(handler);
             string destination = Path.Combine(directory, "result");
+            string stage = Path.Combine(directory, ".baidupcs-partial");
             var entry = new RemoteEntry(2, 1, "/result", "result", false, length, DateTimeOffset.UnixEpoch,
                 DateTimeOffset.UnixEpoch, "", []);
             var options = new DownloadOptions { Mode = DownloadMode.Pcs, Retries = 0, Preallocate = preallocate };
@@ -441,13 +445,16 @@ public sealed class NetdiskClientTests
             await Assert.ThrowsAsync<HttpRequestException>(() => client.DownloadAsync(entry, destination, options,
                 cancellationToken: TestContext.Current.CancellationToken));
             Assert.False(File.Exists(destination));
-            string staged = Assert.Single(Directory.EnumerateFiles(Path.Combine(directory, ".baidupcs-partial"), "*.part"));
+            string staged = Assert.Single(Directory.EnumerateFiles(stage, "*.part"));
+            Assert.Single(Directory.EnumerateFiles(stage, "*.json"));
+            Assert.Empty(Directory.EnumerateFiles(stage, "*.lock"));
             Assert.Equal(preallocate ? length : firstRange, new FileInfo(staged).Length);
             interrupted = false;
             ranges.Clear();
             Assert.True(await client.DownloadAsync(entry, destination, options, cancellationToken: TestContext.Current.CancellationToken));
 
             Assert.Equal([(0L, 32767L), (firstRange, length - 1L)], ranges);
+            Assert.False(Directory.Exists(stage));
             byte[] contents = await File.ReadAllBytesAsync(destination, TestContext.Current.CancellationToken);
             Assert.Equal(length, contents.Length);
             Assert.Equal(3, contents[firstRange - 1]);
@@ -456,6 +463,83 @@ public sealed class NetdiskClientTests
         finally
         {
             Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadCleanupKeepsTheStageOfAnActiveDownload()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var handler = new FixtureHandler(async (request, _, token) =>
+        {
+            if (request.Headers.Range is null && Uri.UnescapeDataString(request.RequestUri!.Query).Contains("path=/blocked", StringComparison.Ordinal))
+            {
+                started.TrySetResult();
+                await release.Task.WaitAsync(token);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent("abc"u8.ToArray()) };
+        });
+        using var client = Client(handler);
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("baidupcs-active-stage-");
+        try
+        {
+            string blockedPath = Path.Combine(directory.FullName, "blocked");
+            string stage = Path.Combine(directory.FullName, ".baidupcs-partial");
+            var blocked = new RemoteEntry(1, 0, "/blocked", "blocked", false, 3, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "", []);
+            var other = blocked with { Path = "/other", Name = "other" };
+            var options = new DownloadOptions { Mode = DownloadMode.Pcs, Retries = 0 };
+            CancellationToken token = TestContext.Current.CancellationToken;
+            Task<bool> downloading = client.DownloadAsync(blocked, blockedPath, options, cancellationToken: token);
+            try
+            {
+                await started.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.True(await client.DownloadAsync(other, Path.Combine(directory.FullName, "other"), options, cancellationToken: token));
+                Assert.Single(Directory.EnumerateFiles(stage, "*.part"));
+                Assert.Single(Directory.EnumerateFiles(stage, "*.lock"));
+                await Assert.ThrowsAnyAsync<IOException>(() => client.DownloadAsync(blocked, blockedPath, options, cancellationToken: token));
+            }
+            finally
+            {
+                release.SetResult();
+                Assert.True(await downloading);
+            }
+
+            Assert.False(Directory.Exists(stage));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SkippingAnExistingDownloadClearsItsOldLockButKeepsResumableData()
+    {
+        using var handler = new FixtureHandler((_, _) => throw new InvalidOperationException("Unexpected download request."));
+        using var client = Client(handler);
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("baidupcs-stale-lock-");
+        try
+        {
+            string destination = Path.Combine(directory.FullName, "file");
+            File.WriteAllText(destination, "abc");
+            string stage = directory.CreateSubdirectory(".baidupcs-partial").FullName;
+            string key = Convert.ToHexStringLower(SHA256.HashData("file"u8));
+            string lockPath = Path.Combine(stage, key + ".lock");
+            string unfinished = Path.Combine(stage, "other.part");
+            File.WriteAllText(lockPath, "");
+            File.WriteAllText(unfinished, "resumable");
+            var entry = new RemoteEntry(1, 0, "/file", "file", false, 3, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "", []);
+            var options = new DownloadOptions { Mode = DownloadMode.Pcs };
+
+            Assert.False(await client.DownloadAsync(entry, destination, options, cancellationToken: TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(lockPath));
+            Assert.Equal("resumable", File.ReadAllText(unfinished));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
         }
     }
 

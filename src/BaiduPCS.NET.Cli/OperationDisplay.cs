@@ -25,7 +25,8 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
 
         try
         {
-            await _console.Live(Text.Empty).AutoClear(true).StartAsync(async context =>
+            await _console.Live(Text.Empty).AutoClear(true)
+                .Overflow(VerticalOverflow.Crop).Cropping(VerticalOverflowCropping.Bottom).StartAsync(async context =>
             {
                 Task work = action();
                 using var refresh = new PeriodicTimer(TimeSpan.FromMilliseconds(150));
@@ -45,10 +46,15 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
             if (_finished.Count != 0)
             {
                 var table = CreateTable().AddColumns(Ui.Text(itemHeading), Ui.Text("Result"));
+                if (_hasTransfers)
+                    table.AddColumn(new TableColumn(Ui.Text("Elapsed")).RightAligned());
                 foreach (Item row in _items.Where(item => item.Result is not null))
                 {
                     string result = Markup.Escape(row.Result!);
-                    table.AddRow(new Text(row.Name), new Markup(row.Failed ? $"[red]{result}[/]" : result));
+                    var cells = new List<IRenderable> { new Text(row.Name), new Markup(row.Failed ? $"[red]{result}[/]" : result) };
+                    if (_hasTransfers)
+                        cells.Add(Cell(DurationText(row.ElapsedSeconds)));
+                    table.AddRow(cells);
                 }
                 _console.Write(table);
             }
@@ -116,6 +122,8 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
                 _active.Remove(item);
                 item.Result = Ui.Text(message);
                 item.Failed = failed;
+                if (item.Total is not null && item.StartedAt != 0)
+                    item.ElapsedSeconds = Elapsed(item);
                 item.Rate = null;
                 _finished.Add(item);
             }
@@ -140,10 +148,15 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
             if (_items.Count == 0)
                 return Text.Empty;
 
+            // Simple border uses a top line, a header, a separator and a bottom line.
+            int capacity = height - 4;
+            if (capacity < 1)
+                return Cell(Ui.Format("+ {0} more", _items.Count));
+
             int transferWidth = settings.RawNumbers ? 45 : 25;
             int speedWidth = settings.RawNumbers ? 27 : 13;
             // One observed byte in a 60-second window bounds the longest estimate.
-            int etaWidth = settings.RawNumbers ? 24 : 21;
+            int timeWidth = settings.RawNumbers ? 24 : 21;
             const int partWidth = 6;
             int progressWidth = Math.Clamp(width / 6, 9, 22);
             // The table reserves left and right edges, column padding, and one separator per column gap.
@@ -154,9 +167,9 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
             bool speed = bytes && free >= speedWidth + 12;
             if (speed)
                 free -= speedWidth + 3;
-            bool eta = speed && free >= etaWidth + 12;
-            if (eta)
-                free -= etaWidth + 3;
+            bool time = speed && free >= timeWidth + 12;
+            if (time)
+                free -= timeWidth + 3;
             bool worker = showWorker && bytes && free >= partWidth + 12;
             if (worker)
                 free -= partWidth + 3;
@@ -167,12 +180,11 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
                 table.AddColumn(Column("Transferred", transferWidth).RightAligned());
             if (speed)
                 table.AddColumn(Column("Speed", speedWidth).RightAligned());
-            if (eta)
-                table.AddColumn(Column("ETA", etaWidth).RightAligned());
+            if (time)
+                table.AddColumn(Column("ETA / Elapsed", timeWidth).RightAligned());
             if (worker)
                 table.AddColumn(Column("Part", partWidth).RightAligned());
 
-            int capacity = Math.Max(1, height - 3);
             bool overflow = _items.Count > capacity;
             IEnumerable<Item> prioritized = overflow
                 ? _active.Concat(_pending).Concat(Enumerable.Range(0, _finished.Count).Select(index => _finished[^(index + 1)]))
@@ -187,16 +199,20 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
                     row.Add(Cell(item.Pending is not null || item.Total is null ? "" : TransferText(item)));
                 if (speed)
                     row.Add(Cell(average > 0 ? _numbers.Speed(average) : ""));
-                if (eta)
-                    row.Add(Cell(item.Total > item.Completed && average > 0
-                        ? _numbers.Duration((item.Total.Value - item.Completed) / average) : ""));
+                if (time)
+                {
+                    double? seconds = item.ElapsedSeconds;
+                    if (average > 0 && item.Total is long total && total > item.Completed)
+                        seconds = (total - item.Completed) / average;
+                    row.Add(Cell(DurationText(seconds)));
+                }
                 if (worker)
                     row.Add(Cell(item.Result is null && item.Part is >= 0 ? $"{item.Part}" : ""));
                 table.AddRow(row);
                 shown++;
             }
 
-            return overflow ? new Rows(table, new Text(Ui.Format("+ {0} more", _items.Count - shown))) : table;
+            return overflow && capacity > 1 ? new Rows(table, Cell(Ui.Format("+ {0} more", _items.Count - shown))) : table;
         }
     }
 
@@ -204,6 +220,8 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
     private static Text Cell(string text) => new(text) { Overflow = Overflow.Ellipsis };
     private static TableColumn Column(string title, int width) => new TableColumn(Ui.Text(title)).Width(width).NoWrap();
     private static double Elapsed(Item item) => Stopwatch.GetElapsedTime(item.StartedAt).TotalSeconds;
+
+    private string DurationText(double? seconds) => seconds is { } value ? _numbers.Duration(value) : "";
 
     private string TransferText(Item item) => settings.RawNumbers
         ? $"{_numbers.Bytes(item.Completed, unit: false)}/{_numbers.Bytes(item.Total ?? 0)}"
@@ -228,6 +246,7 @@ internal sealed class OperationDisplay(CommonSettings settings, string itemHeadi
         internal string Name { get; } = string.Concat(name.Select(character => char.IsControl(character) ? '�' : character));
         internal LinkedListNode<Item>? Pending { get; set; }
         internal long StartedAt { get; set; }
+        internal double? ElapsedSeconds { get; set; }
         internal RollingTransferRate? Rate { get; set; }
         internal string? Result { get; set; }
         internal bool Failed { get; set; }

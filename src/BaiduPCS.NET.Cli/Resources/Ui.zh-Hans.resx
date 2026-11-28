@@ -183,7 +183,8 @@
   <data name="Progress" xml:space="preserve"><value>进度</value></data>
   <data name="Transferred" xml:space="preserve"><value>已传输</value></data>
   <data name="Speed" xml:space="preserve"><value>速度</value></data>
-  <data name="ETA" xml:space="preserve"><value>预计剩余时间</value></data>
+  <data name="ETA / Elapsed" xml:space="preserve"><value>预计剩余 / 用时</value></data>
+  <data name="Elapsed" xml:space="preserve"><value>用时</value></data>
   <data name="Part" xml:space="preserve"><value>分片</value></data>
   <data name="+ {0} more" xml:space="preserve"><value>另有 {0} 项</value></data>
   <data name=" part {0}" xml:space="preserve"><value> 分片 {0}</value></data>

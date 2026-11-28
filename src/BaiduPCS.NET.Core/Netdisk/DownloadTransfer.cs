@@ -23,7 +23,10 @@ public sealed partial class NetdiskClient
 
         destination = Path.GetFullPath(destination);
         if (!options.TestOnly && File.Exists(destination) && !options.Overwrite)
+        {
+            CleanSkippedDownload(destination);
             return false;
+        }
 
         if (options.Mode != DownloadMode.Direct)
             return await DownloadFromAsync(entry, destination, options, DownloadEndpoint(entry.Path, options.Mode == DownloadMode.Stream),
@@ -78,66 +81,131 @@ public sealed partial class NetdiskClient
             return true;
         }
 
-        Directory.CreateDirectory(parent);
         string stateDirectory = Path.Combine(parent, ".baidupcs-partial");
-        RejectLink(stateDirectory);
-        Directory.CreateDirectory(stateDirectory);
-        string key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFileName(destination))));
+        string key = DownloadStageKey(destination);
         string part = Path.Combine(stateDirectory, key + ".part");
         string state = Path.Combine(stateDirectory, key + ".json");
         string lockPath = Path.Combine(stateDirectory, key + ".lock");
-        RejectLink(part);
-        RejectLink(state);
-        RejectLink(lockPath);
-        await using var transferLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-        if (File.Exists(destination) && !options.Overwrite)
-            return false;
-
-        await using (var file = new FileStream(part, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read,
-            1, FileOptions.Asynchronous | FileOptions.RandomAccess))
+        try
         {
-            if (ranged)
-                await DownloadRangesAsync(entry, uri, options, file, state, rate, progress, cancellationToken);
-            else if (entry.Size == 0)
-                file.SetLength(0);
-            else
-            {
-                File.Delete(state);
-                await WithRetriesAsync(async token =>
-                {
-                    file.SetLength(0);
-                    using HttpResponseMessage response = await SendDownloadAsync(uri, options.Mode, null, null, token);
-                    await CopyDownloadAsync(response, file, 0, entry.Size, rate, null, progress, token);
-                    return true;
-                }, options.Retries, cancellationToken);
-            }
+            using FileStream transferLock = OpenDownloadLock(stateDirectory, lockPath);
+            if (File.Exists(destination) && !options.Overwrite)
+                return false;
 
-            string? expectedMd5 = options.ExpectedMd5 ?? (options.Verify && entry.Md5.Length == 32 && entry.Blocks.Count <= 1 ? entry.Md5 : null);
-            if (expectedMd5 is not null)
+            RejectLink(part);
+            RejectLink(state);
+            await using (var file = new FileStream(part, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read,
+                1, FileOptions.Asynchronous | FileOptions.RandomAccess))
             {
-                file.Position = 0;
-                string actual = Convert.ToHexStringLower(await MD5.HashDataAsync(file, cancellationToken));
-                if (!actual.Equals(expectedMd5, StringComparison.OrdinalIgnoreCase))
+                if (ranged)
+                    await DownloadRangesAsync(entry, uri, options, file, state, rate, progress, cancellationToken);
+                else if (entry.Size == 0)
+                    file.SetLength(0);
+                else
                 {
                     File.Delete(state);
-                    if (IsPlaceholder(entry.Size, actual))
-                        throw new InvalidOperationException("Baidu returned a restricted-file placeholder instead of the file.");
-                    throw new InvalidDataException("Downloaded data does not match the Baidu checksum.");
+                    await WithRetriesAsync(async token =>
+                    {
+                        file.SetLength(0);
+                        using HttpResponseMessage response = await SendDownloadAsync(uri, options.Mode, null, null, token);
+                        await CopyDownloadAsync(response, file, 0, entry.Size, rate, null, progress, token);
+                        return true;
+                    }, options.Retries, cancellationToken);
                 }
+
+                string? expectedMd5 = options.ExpectedMd5 ?? (options.Verify && entry.Md5.Length == 32 && entry.Blocks.Count <= 1 ? entry.Md5 : null);
+                if (expectedMd5 is not null)
+                {
+                    file.Position = 0;
+                    string actual = Convert.ToHexStringLower(await MD5.HashDataAsync(file, cancellationToken));
+                    if (!actual.Equals(expectedMd5, StringComparison.OrdinalIgnoreCase))
+                    {
+                        File.Delete(state);
+                        if (IsPlaceholder(entry.Size, actual))
+                            throw new InvalidOperationException("Baidu returned a restricted-file placeholder instead of the file.");
+                        throw new InvalidDataException("Downloaded data does not match the Baidu checksum.");
+                    }
+                }
+
+                file.Flush(flushToDisk: true);
             }
 
-            file.Flush(flushToDisk: true);
+            if (options.PreserveModifiedTime)
+                File.SetLastWriteTimeUtc(part, (entry.LocalModified ?? entry.Modified).UtcDateTime);
+            if (options.Executable && !OperatingSystem.IsWindows())
+                File.SetUnixFileMode(part, File.GetUnixFileMode(part) | UnixFileMode.UserExecute);
+            cancellationToken.ThrowIfCancellationRequested();
+            RejectLink(destination);
+            File.Move(part, destination, options.Overwrite);
+            File.Delete(state);
+            return true;
+        }
+        finally
+        {
+            TryRemoveEmptyDownloadDirectory(stateDirectory);
+        }
+    }
+
+    private static string DownloadStageKey(string destination) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFileName(destination))));
+
+    private static FileStream OpenDownloadLock(string stateDirectory, string lockPath)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            RejectLink(stateDirectory);
+            Directory.CreateDirectory(stateDirectory);
+            try
+            {
+                return OpenTransferLock(lockPath);
+            }
+            catch (DirectoryNotFoundException) when (attempt < 2)
+            {
+                // A concurrent download can remove the empty directory before the lock is opened.
+            }
+        }
+    }
+
+    private static FileStream OpenTransferLock(string lockPath)
+    {
+        RejectLink(lockPath);
+        return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
+    }
+
+    private static void CleanSkippedDownload(string destination)
+    {
+        string stateDirectory = Path.Combine(Path.GetDirectoryName(destination)!, ".baidupcs-partial");
+        if (!Directory.Exists(stateDirectory))
+            return;
+
+        try
+        {
+            RejectLink(stateDirectory);
+            string lockPath = Path.Combine(stateDirectory, DownloadStageKey(destination) + ".lock");
+            if (File.Exists(lockPath))
+            {
+                using FileStream transferLock = OpenTransferLock(lockPath);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // A skipped download does not need the lock if it is in use or inaccessible.
         }
 
-        if (options.PreserveModifiedTime)
-            File.SetLastWriteTimeUtc(part, (entry.LocalModified ?? entry.Modified).UtcDateTime);
-        if (options.Executable && !OperatingSystem.IsWindows())
-            File.SetUnixFileMode(part, File.GetUnixFileMode(part) | UnixFileMode.UserExecute);
-        cancellationToken.ThrowIfCancellationRequested();
-        RejectLink(destination);
-        File.Move(part, destination, options.Overwrite);
-        File.Delete(state);
-        return true;
+        TryRemoveEmptyDownloadDirectory(stateDirectory);
+    }
+
+    private static void TryRemoveEmptyDownloadDirectory(string stateDirectory)
+    {
+        try
+        {
+            RejectLink(stateDirectory);
+            Directory.Delete(stateDirectory, recursive: false);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Other transfers, resumable data or filesystem permissions may keep the directory in place.
+        }
     }
 
     private async Task<bool> ProbeAsync(long size, Uri uri, DownloadOptions options, TransferRate rate, CancellationToken token) =>

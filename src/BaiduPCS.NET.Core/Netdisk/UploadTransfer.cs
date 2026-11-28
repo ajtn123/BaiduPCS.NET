@@ -55,7 +55,7 @@ public sealed partial class NetdiskClient
         string key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{_account.Id}:{target}")));
         string statePath = Path.Combine(checkpointDirectory, key + ".json");
         string lockPath = Path.Combine(checkpointDirectory, key + ".lock");
-        await using var transferLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        using FileStream transferLock = OpenTransferLock(lockPath);
 
         UploadCheckpoint? checkpoint = await ReadCheckpointAsync<UploadCheckpoint>(statePath, cancellationToken);
         if (checkpoint?.Identity != identity || string.IsNullOrEmpty(checkpoint.UploadId)
